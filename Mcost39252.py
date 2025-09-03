@@ -10,7 +10,7 @@ import traceback
 import os
 
 # ===== EMBEDDED BASE COST DATA =====
-# ข้อมูล Hashira Cost (ฝังในโปรแกรม) - 68 เมนู
+# ข้อมูล Hashira Cost (ฝังในโปรแกรม) - 68 เมนู (อัพเดทแล้ว)
 HASHIRA_COST_DATA = {
     "Pork Cut Steak Set": 46.53,
     "Tonteki Set": 131.99,
@@ -82,7 +82,7 @@ HASHIRA_COST_DATA = {
     "Miso Soup": 3.04,
 }
 
-# ข้อมูล Hamada Cost (ฝังในโปรแกรม) - 87 เมนู
+# ข้อมูล Hamada Cost (ฝังในโปรแกรม) - 87 เมนู (ไม่เปลี่ยน)
 HAMADA_COST_DATA = {
     "Ebi Tempura Set": 67.53,
     "Salmon Tempura Set": 51.84,
@@ -334,6 +334,86 @@ LANGUAGES = {
         'items': 'รายการ',
         'template_file': 'ไฟล์ Template',
         'embedded_data': 'ข้อมูลฝังในโปรแกรม'
+    },
+    'en': {
+        'app_title': 'Hamada & Hashira Cost Calculator - Embedded Edition',
+        'select_import_file': 'Select Import File',
+        'calculate': 'Calculate',
+        'save_excel': 'Save Excel',
+        'save_excel_debug': 'Save Excel + Debug',
+        'check_base_file': 'Check Base Data',
+        'export_base_file': 'Export Base Data',
+        'import_new_base': 'Import Base from File',
+        'import_template_file': 'Import Additional Template',
+        'clear_debug': 'Clear Debug',
+        'debug_mode': 'Enable Debug Mode',
+        'select_base_type': 'Select Base Cost Type',
+        'hashira_cost': 'Hashira Cost',
+        'hamada_cost': 'Hamada Cost',
+        'no_file_selected': 'No file selected',
+        'file_selected': 'File',
+        'base_data_ready': 'Base Data: Ready (Embedded)',
+        'results_tab': 'Results',
+        'debug_tab': 'Debug Log',
+        'statistics': 'Statistics',
+        'no_data': 'No data available',
+        'menu_name': 'MENU NAME',
+        'qty': 'Qty',
+        'material_cost': 'Material Cost',
+        'total_cost': 'Total Cost',
+        'grand_total': 'Grand Total',
+        'matched_menus': 'Found',
+        'not_found_menus': 'Not Found',
+        'total_amount': 'Total',
+        'baht': 'Baht',
+        'error': 'Error',
+        'warning': 'Warning',
+        'success': 'Success',
+        'please_select_file': 'Please select import file first',
+        'calculation_complete': 'Calculation complete - found',
+        'items': 'items',
+        'template_file': 'Template File',
+        'embedded_data': 'Embedded Data'
+    },
+    'jp': {
+        'app_title': 'Hamada & Hashira コスト計算機 - 組み込み版',
+        'select_import_file': 'インポートファイル選択',
+        'calculate': '計算',
+        'save_excel': 'Excel保存',
+        'save_excel_debug': 'Excel + デバッグ保存',
+        'check_base_file': 'ベースデータ確認',
+        'export_base_file': 'ベースデータ出力',
+        'import_new_base': 'ファイルからベース取込',
+        'import_template_file': '追加テンプレート取込',
+        'clear_debug': 'デバッグクリア',
+        'debug_mode': 'デバッグモード有効',
+        'select_base_type': 'ベースコストタイプ選択',
+        'hashira_cost': 'Hashira Cost',
+        'hamada_cost': 'Hamada Cost',
+        'no_file_selected': 'ファイル未選択',
+        'file_selected': 'ファイル',
+        'base_data_ready': 'ベースデータ: 準備完了（組込済）',
+        'results_tab': '結果',
+        'debug_tab': 'デバッグログ',
+        'statistics': '統計',
+        'no_data': 'データなし',
+        'menu_name': 'メニュー名',
+        'qty': '数量',
+        'material_cost': '材料費',
+        'total_cost': '合計金額',
+        'grand_total': '総合計',
+        'matched_menus': '一致',
+        'not_found_menus': '未発見',
+        'total_amount': '合計',
+        'baht': 'バーツ',
+        'error': 'エラー',
+        'warning': '警告',
+        'success': '成功',
+        'please_select_file': 'インポートファイルを選択してください',
+        'calculation_complete': '計算完了 - 発見',
+        'items': '項目',
+        'template_file': 'テンプレートファイル',
+        'embedded_data': '組み込みデータ'
     }
 }
 
@@ -381,9 +461,9 @@ class EmbeddedCostCalculatorApp:
     def _show_embedded_info(self):
         """แสดงข้อมูลเกี่ยวกับข้อมูลที่ฝังไว้"""
         stats = config_manager.get_statistics()
-        self.debug_log("🚀 Hamada & Hashira Cost Calculator - Embedded Edition")
-        self.debug_log("=" * 50)
-        self.debug_log("📊 ข้อมูล Base Cost ที่ฝังในโปรแกรม:")
+        self.debug_log("🚀 Hamada & Hashira Cost Calculator - Embedded Edition (Updated)")
+        self.debug_log("=" * 60)
+        self.debug_log("📊 ข้อมูล Base Cost ที่ฝังในโปรแกรม (อัพเดทแล้ว):")
 
         for base_type, stat in stats.items():
             self.debug_log(f"🏪 {base_type.upper()} Cost:")
@@ -403,16 +483,35 @@ class EmbeddedCostCalculatorApp:
         header_frame = ttk.Frame(main_frame)
         header_frame.pack(fill=tk.X, pady=(0, 20))
 
-        # Title with embedded indicator
+        # Title with updated indicator
         title_label = ttk.Label(header_frame,
-                                text="🍱 Hamada & Hashira Cost Calculator - Embedded Edition",
+                                text="🍱 Hamada & Hashira Cost Calculator - Updated Edition",
                                 style='Title.TLabel')
         title_label.pack(pady=(0, 5))
 
         subtitle = ttk.Label(header_frame,
-                             text="💾 ข้อมูล Base Cost ฝังในโปรแกรม - ไม่ต้องพึ่งไฟล์ภายนอก",
+                             text="💾 ข้อมูล Hashira Cost อัพเดทแล้ว | ข้อมูลฝังในโปรแกรม",
                              font=('Segoe UI', 11), foreground=self.colors['success'])
         subtitle.pack()
+
+        # Language Selection
+        lang_frame = ttk.LabelFrame(main_frame, text="🌐 Language / ภาษา / 言語", padding=10)
+        lang_frame.pack(fill=tk.X, pady=(0, 15))
+
+        self.lang_var = tk.StringVar(value='th')
+        lang_buttons_frame = ttk.Frame(lang_frame)
+        lang_buttons_frame.pack()
+
+        lang_buttons = [
+            ('🇹🇭 ไทย', 'th'),
+            ('🇺🇸 English', 'en'),
+            ('🇯🇵 日本語', 'jp')
+        ]
+
+        for text, code in lang_buttons:
+            ttk.Radiobutton(lang_buttons_frame, text=text,
+                            variable=self.lang_var, value=code,
+                            command=lambda: self.change_language(self.lang_var.get())).pack(side=tk.LEFT, padx=10)
 
         # ===== Base Type Selection Card =====
         base_selection_frame = ttk.LabelFrame(main_frame, text="🏪 เลือกประเภท Base Cost",
@@ -430,7 +529,7 @@ class EmbeddedCostCalculatorApp:
         hashira_frame = ttk.Frame(base_info_frame)
         hashira_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
 
-        hashira_radio = ttk.Radiobutton(hashira_frame, text="🏯 Hashira Cost",
+        hashira_radio = ttk.Radiobutton(hashira_frame, text="🏯 Hashira Cost (อัพเดทแล้ว)",
                                         variable=self.selected_base_type, value='hashira',
                                         command=self.on_base_type_change)
         hashira_radio.pack(anchor="w")
@@ -609,6 +708,13 @@ class EmbeddedCostCalculatorApp:
 
         self._configure_treeview_style()
 
+    def change_language(self, lang_code):
+        """เปลี่ยนภาษา"""
+        self.current_language = lang_code
+        self.debug_log(f"🌍 เปลี่ยนภาษาเป็น: {lang_code}")
+        # รีเฟรช UI text ตามภาษาใหม่
+        self.root.title(self.t('app_title'))
+
     def _configure_treeview_style(self):
         """กำหนดสไตล์ modern สำหรับ treeview"""
         style = ttk.Style()
@@ -645,7 +751,12 @@ class EmbeddedCostCalculatorApp:
         if df_base is not None and not df_base.empty:
             menu_count = len(df_base)
             avg_cost = df_base['Material Cost'].mean()
-            status_text = f"💾 {selected.upper()} Cost: ข้อมูลฝังในโปรแกรม ({menu_count} เมนู, เฉลี่ย {avg_cost:.0f} บาท)"
+
+            if selected == 'hashira':
+                status_text = f"💾 {selected.upper()} Cost: ข้อมูลฝังในโปรแกรม (อัพเดทแล้ว) ({menu_count} เมนู, เฉลี่ย {avg_cost:.0f} บาท)"
+            else:
+                status_text = f"💾 {selected.upper()} Cost: ข้อมูลฝังในโปรแกรม ({menu_count} เมนู, เฉลี่ย {avg_cost:.0f} บาท)"
+
             color = self.colors['success']
         else:
             status_text = f"❌ {selected.upper()} Cost: ไม่มีข้อมูล"
@@ -769,6 +880,11 @@ class EmbeddedCostCalculatorApp:
             self.debug_log(f"   📈 สูงสุด: {cost_stats['max']:.2f} บาท")
             self.debug_log(f"   💰 เฉลี่ย: {cost_stats['mean']:.2f} บาท")
             self.debug_log(f"   📊 จำนวนรายการ: {cost_stats['count']}")
+
+            # แสดงข้อมูลพิเศษสำหรับ Hashira ที่อัพเดท
+            if selected == 'hashira':
+                self.debug_log(f"✅ ข้อมูล Hashira Cost ได้รับการอัพเดทแล้ว!")
+
         except Exception as e:
             self.debug_log(f"❌ Error คำนวณสถิติ: {str(e)}", "ERROR")
 
@@ -794,7 +910,7 @@ class EmbeddedCostCalculatorApp:
             messagebox.showwarning("Warning", "กรุณาเลือกไฟล์ Import ก่อน")
             return
 
-        self.debug_log(f"⚡ === เริ่มการคำนวณด้วย {selected_base.upper()} Cost (Embedded Data) ===")
+        self.debug_log(f"⚡ === เริ่มการคำนวณด้วย {selected_base.upper()} Cost (Updated Embedded Data) ===")
 
         # เคลียร์ debug data เก่า
         self.debug_data = {
@@ -936,12 +1052,12 @@ class EmbeddedCostCalculatorApp:
             'nan_cost_count': len(self.debug_data['nan_cost_items']),
             'not_sold_count': len(self.debug_data['not_sold_menus']),
             'base_type': selected_base.upper(),
-            'data_source': 'EMBEDDED',
+            'data_source': 'EMBEDDED_UPDATED',
             'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
 
         # สรุปผลการประมวลผล
-        self.debug_log(f"📊 === สรุปผลการประมวลผล ({selected_base.upper()} - EMBEDDED) ===")
+        self.debug_log(f"📊 === สรุปผลการประมวลผล ({selected_base.upper()} - UPDATED EMBEDDED) ===")
         summary = self.debug_data['processing_summary']
         self.debug_log(f"📋 รายการทั้งหมด: {summary['total_rows']}")
         self.debug_log(f"✅ พบเมนูที่ตรงกัน: {summary['matched_count']}")
@@ -975,7 +1091,7 @@ class EmbeddedCostCalculatorApp:
         # อัพเดทสถิติ
         self._update_statistics(matched_count, summary['not_found_count'], grand_total, selected_base)
 
-        success_msg = f"✅ คำนวณเสร็จสิ้น - พบ {matched_count} รายการ (ใช้ {selected_base.upper()} Cost)"
+        success_msg = f"✅ คำนวณเสร็จสิ้น - พบ {matched_count} รายการ (ใช้ {selected_base.upper()} Cost - Updated)"
         self.debug_log(success_msg)
         messagebox.showinfo("Success", success_msg)
 
@@ -1006,12 +1122,13 @@ class EmbeddedCostCalculatorApp:
 
     def _update_statistics(self, matched, not_found, grand_total, base_type):
         """อัพเดทสถิติ"""
+        update_indicator = " (Updated)" if base_type.lower() == 'hashira' else ""
         stats_text = (f"✅ พบเมนู: {matched} | ❌ ไม่พบ: {not_found} | "
-                      f"💰 รวม: {grand_total:,.2f} บาท | 🏪 Base: {base_type.upper()} (Embedded)")
+                      f"💰 รวม: {grand_total:,.2f} บาท | 🏪 Base: {base_type.upper()}{update_indicator}")
         self.stats_label.config(text=stats_text)
 
     def export_excel(self):
-        """บันทึก Excel แบบปกติ - Fixed Version"""
+        """บันทึก Excel แบบปกติ"""
         self.debug_log("🔄 เริ่มกระบวนการบันทึก Excel...")
 
         if self.df_result is None or self.df_result.empty:
@@ -1022,17 +1139,12 @@ class EmbeddedCostCalculatorApp:
         selected_base = self.selected_base_type.get()
         default_name = f"Cost_Calculation_{selected_base.upper()}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
 
-        self.debug_log(f"📁 เปิดหน้าต่างเลือกไฟล์สำหรับบันทึก...")
-
         try:
             file_path = filedialog.asksaveasfilename(
                 title="บันทึกผลลัพธ์การคำนวณ",
                 defaultextension=".xlsx",
                 initialname=default_name,
-                filetypes=[
-                    ("Excel Files", "*.xlsx"),
-                    ("All Files", "*.*")
-                ]
+                filetypes=[("Excel Files", "*.xlsx"), ("All Files", "*.*")]
             )
 
             if not file_path:
@@ -1040,18 +1152,11 @@ class EmbeddedCostCalculatorApp:
                 return
 
             self.debug_log(f"📂 ไฟล์ที่เลือก: {file_path}")
-            self.debug_log("🔄 กำลังประมวลผลข้อมูลสำหรับ Excel...")
 
             # เตรียมข้อมูล
             df_export = self.df_result.copy()
-
-            # แปลงข้อมูลให้เป็น numeric
-            if 'Material Cost' in df_export.columns:
-                df_export['Material Cost'] = pd.to_numeric(df_export['Material Cost'], errors='coerce').fillna(0)
-            if 'Total Cost' in df_export.columns:
-                df_export['Total Cost'] = pd.to_numeric(df_export['Total Cost'], errors='coerce').fillna(0)
-
-            self.debug_log("💾 เขียนข้อมูลลง Excel...")
+            df_export['Material Cost'] = pd.to_numeric(df_export['Material Cost'], errors='coerce').fillna(0)
+            df_export['Total Cost'] = pd.to_numeric(df_export['Total Cost'], errors='coerce').fillna(0)
 
             # บันทึกไฟล์ Excel
             with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
@@ -1062,7 +1167,6 @@ class EmbeddedCostCalculatorApp:
                 worksheet = writer.sheets['ผลลัพธ์']
 
                 # จัดรูปแบบ header
-                from openpyxl.styles import Font, PatternFill
                 header_font = Font(bold=True)
                 header_fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
 
@@ -1072,12 +1176,10 @@ class EmbeddedCostCalculatorApp:
 
                 # จัดรูปแบบตัวเลข
                 for row in worksheet.iter_rows(min_row=2):
-                    if len(row) >= 3:  # Material Cost column
-                        if isinstance(row[2].value, (int, float)):
-                            row[2].number_format = '#,##0.00'
-                    if len(row) >= 4:  # Total Cost column
-                        if isinstance(row[3].value, (int, float)):
-                            row[3].number_format = '#,##0.00'
+                    if len(row) >= 3 and isinstance(row[2].value, (int, float)):
+                        row[2].number_format = '#,##0.00'
+                    if len(row) >= 4 and isinstance(row[3].value, (int, float)):
+                        row[3].number_format = '#,##0.00'
 
                 # ไฮไลท์แถว Grand Total
                 grand_total_fill = PatternFill(start_color="FFFF99", end_color="FFFF99", fill_type="solid")
@@ -1095,42 +1197,31 @@ class EmbeddedCostCalculatorApp:
         except Exception as e:
             error_msg = f"❌ ไม่สามารถบันทึกไฟล์ได้: {str(e)}"
             self.debug_log(error_msg, "ERROR")
-            self.debug_log(traceback.format_exc(), "ERROR")
             messagebox.showerror("Error", f"เกิดข้อผิดพลาดในการบันทึก:\n{error_msg}")
 
     def export_excel_with_debug(self):
-        """บันทึก Excel พร้อม Debug sheets - Fixed Version"""
+        """บันทึก Excel พร้อม Debug sheets"""
         self.debug_log("🔄 เริ่มกระบวนการบันทึก Excel พร้อม Debug...")
 
         if self.df_result is None or self.df_result.empty:
-            self.debug_log("⚠️ ไม่มีผลลัพธ์ให้บันทึก", "WARNING")
             messagebox.showwarning("Warning", "กรุณาคำนวณก่อนบันทึก")
             return
 
         selected_base = self.selected_base_type.get()
         default_name = f"Cost_Calculation_Debug_{selected_base.upper()}_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
 
-        self.debug_log(f"📁 เปิดหน้าต่างเลือกไฟล์สำหรับบันทึก Debug...")
-
         try:
             file_path = filedialog.asksaveasfilename(
                 title="บันทึกผลลัพธ์พร้อม Debug Information",
                 defaultextension=".xlsx",
                 initialname=default_name,
-                filetypes=[
-                    ("Excel Files", "*.xlsx"),
-                    ("All Files", "*.*")
-                ]
+                filetypes=[("Excel Files", "*.xlsx"), ("All Files", "*.*")]
             )
 
             if not file_path:
-                self.debug_log("ℹ️ ผู้ใช้ยกเลิกการบันทึก")
                 return
 
             self.debug_log(f"📂 ไฟล์ที่เลือก: {file_path}")
-            self.debug_log("📊 === เริ่มการสร้าง Excel Debug Edition ===")
-
-            # สร้าง workbook ใหม่
             wb = Workbook()
 
             # Sheet 1: ผลลัพธ์หลัก
@@ -1139,152 +1230,53 @@ class EmbeddedCostCalculatorApp:
             ws_main.title = "ผลลัพธ์การคำนวณ"
 
             df_export = self.df_result.copy()
-
-            # แปลงข้อมูลให้เป็น numeric
             df_export["Material Cost"] = pd.to_numeric(df_export["Material Cost"], errors="coerce").fillna(0).round(2)
             df_export["Total Cost"] = pd.to_numeric(df_export["Total Cost"], errors="coerce").fillna(0).round(2)
 
-            # เพิ่มข้อมูลลง sheet
             for r in dataframe_to_rows(df_export, index=False, header=True):
                 ws_main.append(r)
 
-            # จัดรูปแบบ Sheet หลัก
             self._format_main_sheet(ws_main)
             self.debug_log("✅ Sheet ผลลัพธ์การคำนวณ สร้างเสร็จ")
 
-            # Sheet 2: ข้อมูล Import
-            if self.import_file and os.path.exists(self.import_file):
-                self.debug_log("🔄 สร้าง Sheet 2: ข้อมูล Import...")
-                self._add_import_data_sheet(wb)
-
-            # Sheet 3: ข้อมูล Template (ถ้ามี)
-            if self.template_file and os.path.exists(self.template_file):
-                self.debug_log("🔄 สร้าง Sheet 3: ข้อมูล Template...")
-                self._add_template_data_sheet(wb)
-
-            # Sheet 4: ข้อมูล Base Cost ที่ใช้ (Embedded)
-            self.debug_log("🔄 สร้าง Sheet: ข้อมูล Base Cost...")
+            # Sheet 2: ข้อมูล Base Cost ที่ใช้
             self._add_base_data_sheet(wb)
 
-            # Sheet 5: เมนูที่ไม่พบ
+            # Sheet 3: ข้อมูล Import
+            if self.import_file and os.path.exists(self.import_file):
+                self._add_import_data_sheet(wb)
+
+            # Sheet 4: เมนูที่ไม่พบ
             if self.debug_data['not_found_menus']:
-                self.debug_log("🔄 สร้าง Sheet: เมนูที่ไม่พบ...")
                 self._add_not_found_sheet(wb)
 
-            # Sheet 6: สรุปการประมวลผล
-            self.debug_log("🔄 สร้าง Sheet: สรุปการประมวลผล...")
+            # Sheet 5: สรุปการประมวลผล
             self._add_summary_sheet(wb)
 
             # ปรับความกว้างคอลัมน์
-            self.debug_log("🔄 ปรับความกว้างคอลัมน์...")
             self._adjust_column_width(wb)
 
-            # บันทึกไฟล์
-            self.debug_log("💾 บันทึกไฟล์...")
             wb.save(file_path)
 
             success_msg = f"💾 บันทึกไฟล์พร้อม Debug สำเร็จ: {os.path.basename(file_path)}"
             self.debug_log(success_msg)
 
-            # แสดงรายการ sheets ที่สร้าง
-            sheet_info = f"สร้าง {len(wb.worksheets)} sheets สำเร็จ:\n"
+            sheet_info = f"สร้าง {len(wb.worksheets)} sheets:\n"
             for i, ws in enumerate(wb.worksheets, 1):
                 sheet_info += f"{i}. {ws.title}\n"
-
-            self.debug_log(f"📊 รายการ Sheets ที่สร้าง:\n{sheet_info}")
 
             messagebox.showinfo("Success",
                                 f"บันทึกไฟล์ Debug สำเร็จ!\n\n"
                                 f"📁 ไฟล์: {os.path.basename(file_path)}\n"
-                                f"📍 ที่อยู่: {file_path}\n\n"
-                                f"📊 จำนวน Sheets: {len(wb.worksheets)}\n"
-                                f"{sheet_info}")
+                                f"📊 จำนวน Sheets: {len(wb.worksheets)}\n\n{sheet_info}")
 
         except Exception as e:
             error_msg = f"❌ ไม่สามารถบันทึกไฟล์ Debug ได้: {str(e)}"
             self.debug_log(error_msg, "ERROR")
-            self.debug_log(traceback.format_exc(), "ERROR")
-            messagebox.showerror("Error", f"เกิดข้อผิดพลาดในการบันทึก Debug:\n{error_msg}")
-
-    def _add_import_data_sheet(self, wb):
-        """เพิ่ม sheet ข้อมูล Import - Fixed Version"""
-        try:
-            if not self.import_file or not os.path.exists(self.import_file):
-                self.debug_log("⚠️ ไฟล์ Import ไม่มีหรือไม่พบ", "WARNING")
-                return
-
-            df_import = pd.read_excel(self.import_file)
-            ws_import = wb.create_sheet("ข้อมูล Import")
-
-            # เพิ่ม header พิเศษ
-            ws_import.append(["📂 ข้อมูล Import ที่ใช้ในการคำนวณ"])
-            ws_import.append([f"ไฟล์: {os.path.basename(self.import_file)}"])
-            ws_import.append([f"วันที่: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
-            ws_import.append([f"จำนวนแถว: {len(df_import)}"])
-            ws_import.append([f"Base Cost: {self.debug_data['processing_summary']['base_type']} (Embedded)"])
-            ws_import.append([])  # บรรทัดว่าง
-
-            # เพิ่มข้อมูล
-            for r in dataframe_to_rows(df_import, index=False, header=True):
-                ws_import.append(r)
-
-            # จัดรูปแบบ
-            ws_import[1][0].font = Font(bold=True, size=14)
-            ws_import[1][0].fill = PatternFill(start_color="E6F3FF", end_color="E6F3FF", fill_type="solid")
-
-            # จัดรูปแบบ header ของข้อมูล
-            header_row = 7  # แถวที่เป็น header ของข้อมูล
-            if len(list(ws_import.iter_rows())) >= header_row:
-                for cell in ws_import[header_row]:
-                    if cell.value:
-                        cell.font = Font(bold=True)
-                        cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
-
-            self.debug_log("✅ เพิ่ม Sheet ข้อมูล Import สำเร็จ")
-
-        except Exception as e:
-            self.debug_log(f"❌ Error เพิ่ม Import sheet: {e}", "ERROR")
-
-    def _add_template_data_sheet(self, wb):
-        """เพิ่ม sheet ข้อมูล Template - Fixed Version"""
-        try:
-            if not self.template_file or not os.path.exists(self.template_file):
-                self.debug_log("⚠️ ไฟล์ Template ไม่มีหรือไม่พบ", "WARNING")
-                return
-
-            df_template = pd.read_excel(self.template_file)
-            ws_template = wb.create_sheet("ข้อมูล Template")
-
-            # เพิ่ม header พิเศษ
-            ws_template.append(["📄 ข้อมูล Template เพิ่มเติม"])
-            ws_template.append([f"ไฟล์: {os.path.basename(self.template_file)}"])
-            ws_template.append([f"วันที่: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
-            ws_template.append([f"จำนวนแถว: {len(df_template)}"])
-            ws_template.append([])
-
-            # เพิ่มข้อมูล
-            for r in dataframe_to_rows(df_template, index=False, header=True):
-                ws_template.append(r)
-
-            # จัดรูปแบบ
-            ws_template[1][0].font = Font(bold=True, size=14)
-            ws_template[1][0].fill = PatternFill(start_color="F0E6FF", end_color="F0E6FF", fill_type="solid")
-
-            # จัดรูปแบบ header ของข้อมูล
-            header_row = 6
-            if len(list(ws_template.iter_rows())) >= header_row:
-                for cell in ws_template[header_row]:
-                    if cell.value:
-                        cell.font = Font(bold=True)
-                        cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
-
-            self.debug_log("✅ เพิ่ม Sheet ข้อมูล Template สำเร็จ")
-
-        except Exception as e:
-            self.debug_log(f"❌ Error เพิ่ม Template sheet: {e}", "ERROR")
+            messagebox.showerror("Error", f"เกิดข้อผิดพลาด:\n{error_msg}")
 
     def _add_base_data_sheet(self, wb):
-        """เพิ่ม sheet ข้อมูล Base Cost ที่ใช้ (Embedded)"""
+        """เพิ่ม sheet ข้อมูล Base Cost ที่ใช้"""
         try:
             selected_base = self.selected_base_type.get()
             df_base = self.get_current_base_df()
@@ -1292,26 +1284,28 @@ class EmbeddedCostCalculatorApp:
             if df_base is None:
                 return
 
-            ws_base = wb.create_sheet(f"ข้อมูล {selected_base.upper()} Cost")
+            update_indicator = " (อัพเดทแล้ว)" if selected_base == 'hashira' else ""
+            ws_base = wb.create_sheet(f"ข้อมูล {selected_base.upper()} Cost{update_indicator}")
 
-            # เพิ่ม header พิเศษ
-            ws_base.append([f"🏪 ข้อมูล {selected_base.upper()} Cost ที่ใช้ในการคำนวณ"])
+            # Header พิเศษ
+            ws_base.append([f"🏪 ข้อมูล {selected_base.upper()} Cost ที่ใช้ในการคำนวณ{update_indicator}"])
             ws_base.append([f"ประเภท: {selected_base.upper()} Cost"])
-            ws_base.append([f"แหล่งข้อมูล: Embedded in Program"])
+            ws_base.append([f"แหล่งข้อมูล: Embedded in Program (Updated)"])
             ws_base.append([f"จำนวนเมนู: {len(df_base)}"])
             ws_base.append([f"วันที่: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
             ws_base.append([])
 
-            # เพิ่มข้อมูล base (reset index เพื่อให้ MENU NAME กลับมาเป็นคอลัมน์)
+            # ข้อมูล base
             df_base_export = df_base.reset_index()
             for r in dataframe_to_rows(df_base_export, index=False, header=True):
                 ws_base.append(r)
 
             # จัดรูปแบบ
             ws_base[1][0].font = Font(bold=True, size=14)
-            ws_base[1][0].fill = PatternFill(start_color="E6FFE6", end_color="E6FFE6", fill_type="solid")
+            color = "FFE6E6" if selected_base == 'hashira' else "E6FFE6"  # สีแดงอ่อนสำหรับ hashira ที่อัพเดท
+            ws_base[1][0].fill = PatternFill(start_color=color, end_color=color, fill_type="solid")
 
-            # จัดรูปแบบ header ของข้อมูล
+            # Header ของข้อมูล
             header_row = 7
             for cell in ws_base[header_row]:
                 if cell.value:
@@ -1323,44 +1317,66 @@ class EmbeddedCostCalculatorApp:
         except Exception as e:
             self.debug_log(f"❌ Error เพิ่ม Base sheet: {e}", "ERROR")
 
+    def _add_import_data_sheet(self, wb):
+        """เพิ่ม sheet ข้อมูล Import"""
+        try:
+            df_import = pd.read_excel(self.import_file)
+            ws_import = wb.create_sheet("ข้อมูล Import")
+
+            # Header พิเศษ
+            ws_import.append(["📂 ข้อมูล Import ที่ใช้ในการคำนวณ"])
+            ws_import.append([f"ไฟล์: {os.path.basename(self.import_file)}"])
+            ws_import.append([f"วันที่: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
+            ws_import.append([f"จำนวนแถว: {len(df_import)}"])
+            ws_import.append([f"Base Cost: {self.debug_data['processing_summary']['base_type']} (Updated Embedded)"])
+            ws_import.append([])
+
+            # ข้อมูล
+            for r in dataframe_to_rows(df_import, index=False, header=True):
+                ws_import.append(r)
+
+            # จัดรูปแบบ
+            ws_import[1][0].font = Font(bold=True, size=14)
+            ws_import[1][0].fill = PatternFill(start_color="E6F3FF", end_color="E6F3FF", fill_type="solid")
+
+            self.debug_log("✅ เพิ่ม Sheet ข้อมูล Import สำเร็จ")
+
+        except Exception as e:
+            self.debug_log(f"❌ Error เพิ่ม Import sheet: {e}", "ERROR")
+
     def _add_not_found_sheet(self, wb):
         """เพิ่ม sheet เมนูที่ไม่พบ"""
         ws_not_found = wb.create_sheet("เมนูที่ไม่พบ")
 
         # Header
         ws_not_found.append(["❌ เมนูที่ไม่พบในฐานข้อมูล"])
-        ws_not_found.append([f"Base Cost: {self.debug_data['processing_summary']['base_type']} (Embedded)"])
+        ws_not_found.append([f"Base Cost: {self.debug_data['processing_summary']['base_type']} (Updated Embedded)"])
         ws_not_found.append([f"จำนวน: {len(self.debug_data['not_found_menus'])} รายการ"])
         ws_not_found.append([])
         ws_not_found.append(["แถวที่", "ชื่อเมนู", "จำนวน"])
-
-        # Header formatting
-        for i in range(1, 6):
-            if i <= 3:
-                ws_not_found[i][0].font = Font(bold=True, size=12)
-                ws_not_found[i][0].fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
-            elif i == 5:
-                for j, cell in enumerate(ws_not_found[i]):
-                    if cell.value:
-                        cell.font = Font(bold=True)
-                        cell.fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
 
         # ข้อมูล
         for item in self.debug_data['not_found_menus']:
             ws_not_found.append([item['row'], item['menu'], item['qty']])
 
+        # จัดรูปแบบ
+        for i in range(1, 6):
+            if i <= 3:
+                ws_not_found[i][0].font = Font(bold=True, size=12)
+                ws_not_found[i][0].fill = PatternFill(start_color="FFCCCC", end_color="FFCCCC", fill_type="solid")
+
     def _add_summary_sheet(self, wb):
         """เพิ่ม sheet สรุปการประมวลผล"""
         ws_summary = wb.create_sheet("สรุปการประมวลผล")
-
         summary = self.debug_data['processing_summary']
 
+        # ข้อมูลสรุป
         summary_data = [
-            ["🔍 สรุปการประมวลผล - Embedded Edition", ""],
+            ["🔍 สรุปการประมวลผล - Updated Embedded Edition", ""],
             ["", ""],
             ["📊 ข้อมูลทั่วไป", ""],
-            ["Base Cost ที่ใช้", f"{summary['base_type']} (Embedded)"],
-            ["แหล่งข้อมูล", "ข้อมูลฝังในโปรแกรม"],
+            ["Base Cost ที่ใช้", f"{summary['base_type']} (Updated Embedded)"],
+            ["แหล่งข้อมูล", "ข้อมูลฝังในโปรแกรม (อัพเดทแล้ว)"],
             ["รายการทั้งหมด", summary['total_rows']],
             ["พบเมนูที่ตรงกัน", summary['matched_count']],
             ["ไม่พบเมนู", summary['not_found_count']],
@@ -1372,45 +1388,16 @@ class EmbeddedCostCalculatorApp:
             ["📅 ข้อมูลการประมวลผล", ""],
             ["เวลาประมวลผล", summary['timestamp']],
             ["ไฟล์ Import", os.path.basename(self.import_file) if self.import_file else "N/A"],
-            ["ไฟล์ Template", os.path.basename(self.template_file) if self.template_file else "ไม่มี"],
-            ["", ""],
+            ["ไฟล์ Template", os.path.basename(self.template_file) if self.template_file else "ไม่มี"]
         ]
-
-        # เพิ่มรายละเอียดเมนูที่พบ
-        if self.debug_data['matched_menus']:
-            summary_data.append(["✅ รายการเมนูที่พบ", ""])
-            summary_data.append(["แถวที่", "ชื่อเมนู", "จำนวน", "ต้นทุน", "รวม"])
-            for item in self.debug_data['matched_menus']:
-                summary_data.append([
-                    item['row'],
-                    item['menu'],
-                    item['qty'],
-                    f"{item['material_cost']:.2f}",
-                    f"{item['total_cost']:.2f}"
-                ])
-            summary_data.append(["", "", "", "", ""])
-
-        # เพิ่มรายละเอียดเมนูที่ไม่พบ
-        if self.debug_data['not_found_menus']:
-            summary_data.append(["❌ รายการเมนูที่ไม่พบ", ""])
-            summary_data.append(["แถวที่", "ชื่อเมนู", "จำนวน"])
-            for item in self.debug_data['not_found_menus']:
-                summary_data.append([item['row'], item['menu'], item['qty']])
-            summary_data.append(["", "", ""])
-
-        # เพิ่มรายการที่ไม่ได้ขาย
-        if self.debug_data['not_sold_menus']:
-            summary_data.append(["📋 รายการที่ไม่ได้ขาย (อยู่ใน Base แต่ไม่มีใน Import)", ""])
-            summary_data.append(["ชื่อเมนู", "ต้นทุน"])
-            for item in self.debug_data['not_sold_menus']:
-                summary_data.append([item['menu'], f"{item['material_cost']:.2f}"])
 
         # เขียนข้อมูลลง sheet
         for row_data in summary_data:
             ws_summary.append(row_data)
 
-        # จัดรูปแบบ summary sheet
-        self._format_summary_sheet(ws_summary)
+        # จัดรูปแบบ
+        ws_summary[1][0].font = Font(bold=True, size=14)
+        ws_summary[1][0].fill = PatternFill(start_color="CCFFCC", end_color="CCFFCC", fill_type="solid")
 
     def _format_main_sheet(self, ws):
         """จัดรูปแบบ sheet หลัก"""
@@ -1432,21 +1419,6 @@ class EmbeddedCostCalculatorApp:
                 for cell in row:
                     cell.font = Font(bold=True)
                     cell.fill = PatternFill(start_color="FFFF99", end_color="FFFF99", fill_type="solid")
-
-    def _format_summary_sheet(self, ws):
-        """จัดรูปแบบ summary sheet"""
-        # Main title
-        ws[1][0].font = Font(bold=True, size=14)
-        ws[1][0].fill = PatternFill(start_color="CCFFCC", end_color="CCFFCC", fill_type="solid")
-
-        # Section headers
-        for row_idx, row in enumerate(ws.iter_rows(), 1):
-            if row[0].value and any(header in str(row[0].value) for header in
-                                    ["📊 ข้อมูลทั่วไป", "📅 ข้อมูลการประมวลผล",
-                                     "✅ รายการเมนูที่พบ", "❌ รายการเมนูที่ไม่พบ",
-                                     "📋 รายการที่ไม่ได้ขาย"]):
-                row[0].font = Font(bold=True, size=12)
-                row[0].fill = PatternFill(start_color="E6F3FF", end_color="E6F3FF", fill_type="solid")
 
     def _adjust_column_width(self, wb):
         """ปรับความกว้างคอลัมน์"""
@@ -1494,7 +1466,7 @@ class EmbeddedCostCalculatorApp:
             messagebox.showerror("Error", error_msg)
 
     def export_base_data(self):
-        """Export ข้อมูล Base Cost ปัจจุบัน (จากข้อมูลฝัง)"""
+        """Export ข้อมูล Base Cost ปัจจุบัน"""
         file_path = filedialog.asksaveasfilename(
             title="Export ข้อมูล Base Cost",
             defaultextension=".xlsx",
@@ -1510,41 +1482,60 @@ class EmbeddedCostCalculatorApp:
 
             sheets_created = 0
 
-            # Export Hashira Cost
+            # Export Hashira Cost (Updated)
             if config_manager.base_data['hashira'] is not None:
-                ws_hashira = wb.create_sheet("Hashira Cost")
+                ws_hashira = wb.create_sheet("Hashira Cost (Updated)")
                 df_hashira = config_manager.base_data['hashira'].reset_index()
+
+                # เพิ่ม info header
+                ws_hashira.append(["🏯 Hashira Cost - อัพเดทแล้ว"])
+                ws_hashira.append([f"จำนวนเมนู: {len(df_hashira)}"])
+                ws_hashira.append([f"วันที่ Export: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
+                ws_hashira.append([])
 
                 for r in dataframe_to_rows(df_hashira, index=False, header=True):
                     ws_hashira.append(r)
 
                 # จัดรูปแบบ header
-                for cell in ws_hashira[1]:
-                    cell.font = Font(bold=True)
-                    cell.fill = PatternFill(start_color="E6F3FF", end_color="E6F3FF", fill_type="solid")
+                ws_hashira[1][0].font = Font(bold=True, size=14)
+                ws_hashira[1][0].fill = PatternFill(start_color="FFE6E6", end_color="FFE6E6", fill_type="solid")
+
+                for cell in ws_hashira[5]:  # Data header
+                    if cell.value:
+                        cell.font = Font(bold=True)
+                        cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
 
                 sheets_created += 1
-                self.debug_log(f"📤 Export Hashira Cost: {len(df_hashira)} เมนู")
+                self.debug_log(f"📤 Export Hashira Cost (Updated): {len(df_hashira)} เมนู")
 
             # Export Hamada Cost
             if config_manager.base_data['hamada'] is not None:
                 ws_hamada = wb.create_sheet("Hamada Cost")
                 df_hamada = config_manager.base_data['hamada'].reset_index()
 
+                # เพิ่ม info header
+                ws_hamada.append(["🍜 Hamada Cost"])
+                ws_hamada.append([f"จำนวนเมนู: {len(df_hamada)}"])
+                ws_hamada.append([f"วันที่ Export: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
+                ws_hamada.append([])
+
                 for r in dataframe_to_rows(df_hamada, index=False, header=True):
                     ws_hamada.append(r)
 
                 # จัดรูปแบบ header
-                for cell in ws_hamada[1]:
-                    cell.font = Font(bold=True)
-                    cell.fill = PatternFill(start_color="E6FFE6", end_color="E6FFE6", fill_type="solid")
+                ws_hamada[1][0].font = Font(bold=True, size=14)
+                ws_hamada[1][0].fill = PatternFill(start_color="E6FFE6", end_color="E6FFE6", fill_type="solid")
+
+                for cell in ws_hamada[5]:  # Data header
+                    if cell.value:
+                        cell.font = Font(bold=True)
+                        cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
 
                 sheets_created += 1
                 self.debug_log(f"📤 Export Hamada Cost: {len(df_hamada)} เมนู")
 
             # ปรับความกว้างคอลัมน์
             self._adjust_column_width(wb)
-
             wb.save(file_path)
 
             success_msg = f"📤 Export ข้อมูล Base สำเร็จ: {os.path.basename(file_path)}"
@@ -1562,14 +1553,14 @@ def main():
     try:
         root = tk.Tk()
 
-        # Set modern window styling
+        # Set window icon
         try:
             root.iconphoto(True, tk.PhotoImage(data=''))
         except:
             pass
 
         app = EmbeddedCostCalculatorApp(root)
-        logger.info("Starting Embedded Cost Calculator")
+        logger.info("Starting Updated Embedded Cost Calculator")
         root.mainloop()
 
     except Exception as e:
