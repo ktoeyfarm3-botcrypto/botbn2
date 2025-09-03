@@ -15,6 +15,22 @@ import warnings
 
 warnings.filterwarnings('ignore')
 
+# ===== Global Variables - Initialize Early =====
+client = None
+running = True
+price_data = []
+volume_data = []
+kline_data = []
+positions = {}
+orders = []
+balance_info = {}
+pnl_history = []
+auto_trading = False
+selected_symbol = "BTCUSDT"
+selected_timeframe = "1m"
+update_thread = None
+strategy_thread = None
+
 
 # ===== Configuration Management =====
 class ConfigManager:
@@ -361,6 +377,41 @@ class SafeTradingBot:
             return None, 0
 
 
+# ===== Responsive Helper Class =====
+class ResponsiveHelper:
+    @staticmethod
+    def get_screen_size():
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        window_width = root.winfo_width() if root.winfo_width() > 1 else 1200
+
+        if window_width <= 800:
+            return 'small', 0.8
+        elif window_width <= 1024:
+            return 'medium', 0.9
+        elif window_width <= 1400:
+            return 'large', 1.0
+        else:
+            return 'xlarge', 1.1
+
+    @staticmethod
+    def should_use_compact_layout():
+        size, scale = ResponsiveHelper.get_screen_size()
+        return size in ['small', 'medium']
+
+    @staticmethod
+    def get_font_scale():
+        size, scale = ResponsiveHelper.get_screen_size()
+        return scale
+
+    @staticmethod
+    def get_padding():
+        if ResponsiveHelper.should_use_compact_layout():
+            return (5, 3)
+        else:
+            return (15, 10)
+
+
 # ===== Modern UI Components =====
 class ModernCard(tk.Frame):
     def __init__(self, parent, title="", bg_color="#2d3436", title_color="#74b9ff", **kwargs):
@@ -368,12 +419,15 @@ class ModernCard(tk.Frame):
         self.configure(highlightbackground="#636e72", highlightthickness=1)
 
         if title:
-            title_frame = tk.Frame(self, bg=bg_color, height=35)
+            scale = ResponsiveHelper.get_font_scale()
+            title_font = int(11 * scale)
+
+            title_frame = tk.Frame(self, bg=bg_color, height=int(35 * scale))
             title_frame.pack(fill="x", padx=10, pady=(8, 0))
             title_frame.pack_propagate(False)
 
             tk.Label(title_frame, text=title, fg=title_color, bg=bg_color,
-                     font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=3)
+                     font=("Segoe UI", title_font, "bold")).pack(anchor="w", pady=3)
 
 
 class ModernButton(tk.Button):
@@ -387,11 +441,15 @@ class ModernButton(tk.Button):
         }
 
         config = styles.get(style, styles['primary'])
+        scale = ResponsiveHelper.get_font_scale()
+        font_size = int(9 * scale)
+        padding_x = int(15 * scale)
+        padding_y = int(6 * scale)
 
         super().__init__(parent, text=text, command=command,
                          bg=config['bg'], fg=config['fg'],
-                         font=("Segoe UI", 9, "bold"),
-                         relief="flat", bd=0, padx=15, pady=6,
+                         font=("Segoe UI", font_size, "bold"),
+                         relief="flat", bd=0, padx=padding_x, pady=padding_y,
                          cursor="hand2", **kwargs)
 
         self.bind("<Enter>", lambda e: self.configure(bg=config['hover']))
@@ -405,62 +463,98 @@ class PortfolioManager(tk.Frame):
         self.setup_ui()
 
     def setup_ui(self):
+        scale = ResponsiveHelper.get_font_scale()
+        compact = ResponsiveHelper.should_use_compact_layout()
+        padding = ResponsiveHelper.get_padding()
+
         # Header
-        header = tk.Frame(self, bg="#1f2937", height=50)
+        header = tk.Frame(self, bg="#1f2937", height=int(50 * scale))
         header.pack(fill="x")
         header.pack_propagate(False)
 
+        title_font = int(14 * scale)
         tk.Label(header, text="💰 Portfolio Manager",
-                 font=("Segoe UI", 14, "bold"), fg="#74b9ff", bg="#1f2937").pack(pady=15)
+                 font=("Segoe UI", title_font, "bold"), fg="#74b9ff", bg="#1f2937").pack(pady=15)
 
         # Portfolio Summary Cards
         summary_frame = tk.Frame(self, bg="#0d1117")
-        summary_frame.pack(fill="x", padx=15, pady=8)
+        summary_frame.pack(fill="x", padx=padding[0], pady=padding[1])
 
-        # Total Balance Card
-        self.balance_card = ModernCard(summary_frame, title="💎 Total Balance", bg_color="#1a5a3e")
-        self.balance_card.pack(side="left", fill="both", expand=True, padx=3)
+        if compact:
+            # Stacked layout for small screens
+            cards_data = [
+                ("💎 Total Balance", "#1a5a3e", "balance_label"),
+                ("📊 Unrealized PnL", "#2d1f3e", "pnl_label"),
+                ("🚀 Today's P&L", "#1f2937", "daily_pnl_label")
+            ]
 
-        self.balance_label = tk.Label(self.balance_card, text="$0.00",
-                                      font=("Segoe UI", 16, "bold"), fg="#00ff88", bg="#1a5a3e")
-        self.balance_label.pack(pady=15)
+            for title, bg_color, label_attr in cards_data:
+                card = ModernCard(summary_frame, title=title, bg_color=bg_color)
+                card.pack(fill="x", pady=2)
 
-        # Unrealized PnL Card
-        self.pnl_card = ModernCard(summary_frame, title="📊 Unrealized PnL", bg_color="#2d1f3e")
-        self.pnl_card.pack(side="left", fill="both", expand=True, padx=3)
+                font_size = int(14 * scale)
+                label = tk.Label(card, text="$0.00",
+                                 font=("Segoe UI", font_size, "bold"),
+                                 fg="#00ff88", bg=bg_color)
+                label.pack(pady=int(10 * scale))
+                setattr(self, label_attr, label)
+        else:
+            # Horizontal layout for larger screens
+            self.balance_card = ModernCard(summary_frame, title="💎 Total Balance", bg_color="#1a5a3e")
+            self.balance_card.pack(side="left", fill="both", expand=True, padx=3)
 
-        self.pnl_label = tk.Label(self.pnl_card, text="$0.00",
-                                  font=("Segoe UI", 16, "bold"), fg="#fd79a8", bg="#2d1f3e")
-        self.pnl_label.pack(pady=15)
+            font_size = int(16 * scale)
+            self.balance_label = tk.Label(self.balance_card, text="$0.00",
+                                          font=("Segoe UI", font_size, "bold"),
+                                          fg="#00ff88", bg="#1a5a3e")
+            self.balance_label.pack(pady=15)
 
-        # Today's Performance Card
-        self.daily_pnl_card = ModernCard(summary_frame, title="🚀 Today's P&L", bg_color="#1f2937")
-        self.daily_pnl_card.pack(side="left", fill="both", expand=True, padx=3)
+            self.pnl_card = ModernCard(summary_frame, title="📊 Unrealized PnL", bg_color="#2d1f3e")
+            self.pnl_card.pack(side="left", fill="both", expand=True, padx=3)
 
-        self.daily_pnl_label = tk.Label(self.daily_pnl_card, text="$0.00",
-                                        font=("Segoe UI", 16, "bold"), fg="#74b9ff", bg="#1f2937")
-        self.daily_pnl_label.pack(pady=15)
+            self.pnl_label = tk.Label(self.pnl_card, text="$0.00",
+                                      font=("Segoe UI", font_size, "bold"),
+                                      fg="#fd79a8", bg="#2d1f3e")
+            self.pnl_label.pack(pady=15)
+
+            self.daily_pnl_card = ModernCard(summary_frame, title="🚀 Today's P&L", bg_color="#1f2937")
+            self.daily_pnl_card.pack(side="left", fill="both", expand=True, padx=3)
+
+            self.daily_pnl_label = tk.Label(self.daily_pnl_card, text="$0.00",
+                                            font=("Segoe UI", font_size, "bold"),
+                                            fg="#74b9ff", bg="#1f2937")
+            self.daily_pnl_label.pack(pady=15)
 
         # Active Positions Table
         positions_card = ModernCard(self, title="📋 Active Positions")
-        positions_card.pack(fill="both", expand=True, padx=15, pady=8)
+        positions_card.pack(fill="both", expand=True, padx=padding[0], pady=padding[1])
 
-        # Table headers
-        table_header = tk.Frame(positions_card, bg="#2d3436")
-        table_header.pack(fill="x", padx=10, pady=8)
+        # Create positions table
+        self.create_positions_table(positions_card, compact, scale)
 
-        headers = ["Symbol", "Side", "Size", "Entry Price", "Mark Price", "PnL", "ROE%", "Actions"]
+    def create_positions_table(self, parent, compact, scale):
+        if not compact:
+            # Table headers for larger screens
+            table_header = tk.Frame(parent, bg="#2d3436")
+            table_header.pack(fill="x", padx=10, pady=8)
 
-        for header in headers:
-            tk.Label(table_header, text=header, font=("Segoe UI", 9, "bold"),
-                     fg="#74b9ff", bg="#2d3436").pack(side="left", padx=10)
+            headers = ["Symbol", "Side", "Size", "Entry Price", "Mark Price", "PnL", "ROE%", "Actions"]
+            header_font = int(9 * scale)
+
+            for header in headers:
+                tk.Label(table_header, text=header, font=("Segoe UI", header_font, "bold"),
+                         fg="#74b9ff", bg="#2d3436").pack(side="left", padx=int(10 * scale))
 
         # Scrollable positions list
-        positions_container = tk.Frame(positions_card, bg="#2d3436")
+        positions_container = tk.Frame(parent, bg="#2d3436")
         positions_container.pack(fill="both", expand=True, padx=10, pady=(0, 10))
 
-        self.positions_canvas = tk.Canvas(positions_container, bg="#2d3436", highlightthickness=0, height=180)
-        positions_scrollbar = ttk.Scrollbar(positions_container, orient="vertical", command=self.positions_canvas.yview)
+        canvas_height = int(120 * scale) if compact else int(180 * scale)
+
+        self.positions_canvas = tk.Canvas(positions_container, bg="#2d3436",
+                                          highlightthickness=0, height=canvas_height)
+        positions_scrollbar = ttk.Scrollbar(positions_container, orient="vertical",
+                                            command=self.positions_canvas.yview)
         self.positions_scrollable = tk.Frame(self.positions_canvas, bg="#2d3436")
 
         self.positions_scrollable.bind("<Configure>",
@@ -505,9 +599,11 @@ class PortfolioManager(tk.Frame):
             active_positions = [p for p in positions if float(p['positionAmt']) != 0]
 
             if not active_positions:
+                scale = ResponsiveHelper.get_font_scale()
+                no_pos_font = int(12 * scale)
                 no_pos_label = tk.Label(self.positions_scrollable,
                                         text="📭 No active positions",
-                                        font=("Segoe UI", 12), fg="#74b9ff", bg="#2d3436")
+                                        font=("Segoe UI", no_pos_font), fg="#74b9ff", bg="#2d3436")
                 no_pos_label.pack(pady=40)
                 return
 
@@ -518,9 +614,56 @@ class PortfolioManager(tk.Frame):
             logger.log(f"Error updating positions table: {e}", 'ERROR')
 
     def create_position_row(self, pos, row_index):
+        compact = ResponsiveHelper.should_use_compact_layout()
+        scale = ResponsiveHelper.get_font_scale()
+
+        if compact:
+            self.create_compact_position_row(pos, row_index, scale)
+        else:
+            self.create_full_position_row(pos, row_index, scale)
+
+    def create_compact_position_row(self, pos, row_index, scale):
+        """Compact view for small screens"""
         row_bg = "#374151" if row_index % 2 == 0 else "#2d3436"
 
-        row_frame = tk.Frame(self.positions_scrollable, bg=row_bg, height=40)
+        row_frame = tk.Frame(self.positions_scrollable, bg=row_bg)
+        row_frame.pack(fill="x", pady=2, padx=5)
+
+        symbol = pos['symbol']
+        side = "LONG" if float(pos['positionAmt']) > 0 else "SHORT"
+        size = abs(float(pos['positionAmt']))
+        pnl = float(pos['unRealizedProfit'])
+
+        side_color = "#00ff88" if side == "LONG" else "#ff4757"
+        pnl_color = "#00ff88" if pnl >= 0 else "#ff4757"
+
+        # Top row: Symbol and Side
+        top_frame = tk.Frame(row_frame, bg=row_bg)
+        top_frame.pack(fill="x", pady=(5, 2))
+
+        font_size = int(10 * scale)
+        tk.Label(top_frame, text=f"{symbol} | {side}",
+                 font=("Segoe UI", font_size, "bold"),
+                 fg=side_color, bg=row_bg).pack(side="left")
+
+        close_btn = tk.Button(top_frame, text="❌", command=lambda s=symbol: self.close_position(s),
+                              bg="#e17055", fg="white", font=("Segoe UI", int(8 * scale)),
+                              relief="flat", bd=0, padx=4, pady=2, cursor="hand2")
+        close_btn.pack(side="right")
+
+        # Bottom row: Key metrics
+        bottom_frame = tk.Frame(row_frame, bg=row_bg)
+        bottom_frame.pack(fill="x", pady=(2, 5))
+
+        metric_font = int(8 * scale)
+        tk.Label(bottom_frame, text=f"Size: {size:.4f} | PnL: ${pnl:+.2f}",
+                 font=("Consolas", metric_font), fg=pnl_color, bg=row_bg).pack(side="left")
+
+    def create_full_position_row(self, pos, row_index, scale):
+        """Full view for larger screens"""
+        row_bg = "#374151" if row_index % 2 == 0 else "#2d3436"
+
+        row_frame = tk.Frame(self.positions_scrollable, bg=row_bg, height=int(40 * scale))
         row_frame.pack(fill="x", pady=1)
         row_frame.pack_propagate(False)
 
@@ -545,26 +688,26 @@ class PortfolioManager(tk.Frame):
         side_color = "#00ff88" if side == "LONG" else "#ff4757"
         pnl_color = "#00ff88" if pnl >= 0 else "#ff4757"
 
-        # Data columns with fixed width
-        tk.Label(row_frame, text=symbol, font=("Consolas", 8), fg="white", bg=row_bg, width=8).pack(side="left", padx=3,
-                                                                                                    pady=8)
-        tk.Label(row_frame, text=side, font=("Consolas", 8), fg=side_color, bg=row_bg, width=6).pack(side="left",
-                                                                                                     padx=3, pady=8)
-        tk.Label(row_frame, text=f"{size:.4f}", font=("Consolas", 8), fg="white", bg=row_bg, width=10).pack(side="left",
-                                                                                                            padx=3,
-                                                                                                            pady=8)
-        tk.Label(row_frame, text=f"${entry_price:.2f}", font=("Consolas", 8), fg="#a0a0a0", bg=row_bg, width=10).pack(
-            side="left", padx=3, pady=8)
-        tk.Label(row_frame, text=f"${mark_price:.2f}", font=("Consolas", 8), fg="#74b9ff", bg=row_bg, width=10).pack(
-            side="left", padx=3, pady=8)
-        tk.Label(row_frame, text=f"${pnl:+.2f}", font=("Consolas", 8), fg=pnl_color, bg=row_bg, width=8).pack(
-            side="left", padx=3, pady=8)
-        tk.Label(row_frame, text=f"{roe:+.2f}%", font=("Consolas", 8), fg=pnl_color, bg=row_bg, width=8).pack(
-            side="left", padx=3, pady=8)
+        font_size = int(8 * scale)
+        col_width = int(8 * scale)
 
-        # Close position button
+        tk.Label(row_frame, text=symbol, font=("Consolas", font_size), fg="white", bg=row_bg,
+                 width=col_width).pack(side="left", padx=3, pady=8)
+        tk.Label(row_frame, text=side, font=("Consolas", font_size), fg=side_color, bg=row_bg,
+                 width=6).pack(side="left", padx=3, pady=8)
+        tk.Label(row_frame, text=f"{size:.4f}", font=("Consolas", font_size), fg="white", bg=row_bg,
+                 width=int(10 * scale)).pack(side="left", padx=3, pady=8)
+        tk.Label(row_frame, text=f"${entry_price:.2f}", font=("Consolas", font_size), fg="#a0a0a0", bg=row_bg,
+                 width=int(10 * scale)).pack(side="left", padx=3, pady=8)
+        tk.Label(row_frame, text=f"${mark_price:.2f}", font=("Consolas", font_size), fg="#74b9ff", bg=row_bg,
+                 width=int(10 * scale)).pack(side="left", padx=3, pady=8)
+        tk.Label(row_frame, text=f"${pnl:+.2f}", font=("Consolas", font_size), fg=pnl_color, bg=row_bg,
+                 width=8).pack(side="left", padx=3, pady=8)
+        tk.Label(row_frame, text=f"{roe:+.2f}%", font=("Consolas", font_size), fg=pnl_color, bg=row_bg,
+                 width=8).pack(side="left", padx=3, pady=8)
+
         close_btn = tk.Button(row_frame, text="❌", command=lambda s=symbol: self.close_position(s),
-                              bg="#e17055", fg="white", font=("Segoe UI", 7, "bold"),
+                              bg="#e17055", fg="white", font=("Segoe UI", int(7 * scale), "bold"),
                               relief="flat", bd=0, padx=6, pady=2, cursor="hand2")
         close_btn.pack(side="right", padx=8, pady=10)
 
@@ -600,41 +743,53 @@ class SignalDashboard(tk.Frame):
         self.setup_ui()
 
     def setup_ui(self):
+        scale = ResponsiveHelper.get_font_scale()
+        compact = ResponsiveHelper.should_use_compact_layout()
+        padding = ResponsiveHelper.get_padding()
+
         # Header
-        header = tk.Frame(self, bg="#1f2937", height=50)
+        header = tk.Frame(self, bg="#1f2937", height=int(50 * scale))
         header.pack(fill="x")
         header.pack_propagate(False)
 
+        title_font = int(14 * scale)
         tk.Label(header, text="🧠 AI Signal Dashboard",
-                 font=("Segoe UI", 14, "bold"), fg="#74b9ff", bg="#1f2937").pack(pady=15)
+                 font=("Segoe UI", title_font, "bold"), fg="#74b9ff", bg="#1f2937").pack(pady=15)
 
         # Signal Strength Meter
-        meter_card = ModernCard(self, title="🎯 Current Signal Strength")
-        meter_card.pack(fill="x", padx=15, pady=8)
+        meter_card = ModernCard(self, title="🎯 Signal Strength")
+        meter_card.pack(fill="x", padx=padding[0], pady=padding[1])
 
         meter_content = tk.Frame(meter_card, bg="#2d3436")
         meter_content.pack(fill="x", padx=10, pady=10)
 
-        self.meter_canvas = tk.Canvas(meter_content, width=350, height=60, bg="#2d3436", highlightthickness=0)
+        meter_width = int(300 * scale) if compact else int(350 * scale)
+        meter_height = int(50 * scale) if compact else int(60 * scale)
+
+        self.meter_canvas = tk.Canvas(meter_content, width=meter_width, height=meter_height,
+                                      bg="#2d3436", highlightthickness=0)
         self.meter_canvas.pack()
 
+        signal_font = int(10 * scale)
         self.signal_text = tk.Label(meter_content, text="⏳ Analyzing...",
-                                    font=("Segoe UI", 10, "bold"), fg="#74b9ff", bg="#2d3436")
+                                    font=("Segoe UI", signal_font, "bold"),
+                                    fg="#74b9ff", bg="#2d3436")
         self.signal_text.pack(pady=(8, 0))
 
-        # Market Overview
-        market_card = ModernCard(self, title="📊 Market Overview")
-        market_card.pack(fill="x", padx=15, pady=8)
+        # Market Overview (only on larger screens)
+        if not compact:
+            market_card = ModernCard(self, title="📊 Market Overview")
+            market_card.pack(fill="x", padx=padding[0], pady=padding[1])
 
-        market_content = tk.Frame(market_card, bg="#2d3436")
-        market_content.pack(fill="both", expand=True, padx=10, pady=10)
+            market_content = tk.Frame(market_card, bg="#2d3436")
+            market_content.pack(fill="both", expand=True, padx=10, pady=10)
 
-        self.market_grid = tk.Frame(market_content, bg="#2d3436")
-        self.market_grid.pack(fill="x")
+            self.market_grid = tk.Frame(market_content, bg="#2d3436")
+            self.market_grid.pack(fill="x")
 
         # Recent Signals Feed
         signals_card = ModernCard(self, title="📡 Live Signal Feed")
-        signals_card.pack(fill="both", expand=True, padx=15, pady=8)
+        signals_card.pack(fill="both", expand=True, padx=padding[0], pady=padding[1])
 
         signals_content = tk.Frame(signals_card, bg="#2d3436")
         signals_content.pack(fill="both", expand=True, padx=10, pady=10)
@@ -643,7 +798,8 @@ class SignalDashboard(tk.Frame):
         signals_container.pack(fill="both", expand=True)
 
         self.signals_canvas = tk.Canvas(signals_container, bg="#2d3436", highlightthickness=0)
-        signals_scrollbar = ttk.Scrollbar(signals_container, orient="vertical", command=self.signals_canvas.yview)
+        signals_scrollbar = ttk.Scrollbar(signals_container, orient="vertical",
+                                          command=self.signals_canvas.yview)
         self.signals_scrollable = tk.Frame(self.signals_canvas, bg="#2d3436")
 
         self.signals_scrollable.bind("<Configure>",
@@ -657,12 +813,20 @@ class SignalDashboard(tk.Frame):
         signals_scrollbar.pack(side="right", fill="y")
 
     def update_signal_meter(self, signal, confidence):
+        if not hasattr(self, 'meter_canvas'):
+            return
+
         self.meter_canvas.delete("all")
 
-        self.meter_canvas.create_rectangle(30, 20, 320, 35, fill="#1f2937", outline="#636e72", width=2)
+        canvas_width = self.meter_canvas.winfo_width()
+        if canvas_width <= 1:
+            canvas_width = 300
+
+        self.meter_canvas.create_rectangle(30, 20, canvas_width - 30, 35, fill="#1f2937",
+                                           outline="#636e72", width=2)
 
         if signal and confidence > 0:
-            meter_width = int(290 * confidence)
+            meter_width = int((canvas_width - 60) * confidence)
             color = "#00ff88" if signal == "BUY" else "#ff4757" if signal == "SELL" else "#74b9ff"
 
             self.meter_canvas.create_rectangle(30, 20, 30 + meter_width, 35, fill=color, outline="")
@@ -670,14 +834,18 @@ class SignalDashboard(tk.Frame):
             signal_emoji = "📈" if signal == "BUY" else "📉" if signal == "SELL" else "⏸️"
             self.signal_text.config(text=f"{signal_emoji} {signal} Signal - {confidence:.1%}")
 
+            # Scale marks
             for i in range(0, 101, 25):
-                x = 30 + (290 * i / 100)
+                x = 30 + ((canvas_width - 60) * i / 100)
                 self.meter_canvas.create_line(x, 15, x, 20, fill="#636e72", width=1)
                 self.meter_canvas.create_text(x, 10, text=f"{i}%", fill="white", font=("Segoe UI", 7))
         else:
             self.signal_text.config(text="⏳ Waiting for signal...")
 
     def update_market_overview(self):
+        if not hasattr(self, 'market_grid'):
+            return
+
         try:
             for widget in self.market_grid.winfo_children():
                 widget.destroy()
@@ -685,7 +853,8 @@ class SignalDashboard(tk.Frame):
             if not client:
                 return
 
-            symbols = bot.watchlist
+            scale = ResponsiveHelper.get_font_scale()
+            symbols = bot.watchlist[:5]  # Limit symbols for responsiveness
 
             for i, symbol in enumerate(symbols):
                 try:
@@ -698,19 +867,24 @@ class SignalDashboard(tk.Frame):
                     row = i // 5
                     col = i % 5
 
-                    symbol_frame = tk.Frame(self.market_grid, bg="#374151" if change_percent >= 0 else "#4c1d1d",
-                                            relief="flat", bd=1, width=60, height=60)
+                    card_size = int(60 * scale)
+                    symbol_frame = tk.Frame(self.market_grid,
+                                            bg="#374151" if change_percent >= 0 else "#4c1d1d",
+                                            relief="flat", bd=1, width=card_size, height=card_size)
                     symbol_frame.grid(row=row, column=col, padx=2, pady=2, sticky="ew")
                     symbol_frame.pack_propagate(False)
 
-                    tk.Label(symbol_frame, text=symbol[:6], font=("Segoe UI", 8, "bold"),
+                    symbol_font = int(8 * scale)
+                    tk.Label(symbol_frame, text=symbol[:6], font=("Segoe UI", symbol_font, "bold"),
                              fg="white", bg=symbol_frame['bg']).pack(pady=(4, 1))
 
                     change_color = "#00ff88" if change_percent >= 0 else "#ff4757"
                     change_arrow = "↗" if change_percent >= 0 else "↘"
 
+                    change_font = int(7 * scale)
                     tk.Label(symbol_frame, text=f"{change_arrow}{change_percent:+.1f}%",
-                             font=("Segoe UI", 7, "bold"), fg=change_color, bg=symbol_frame['bg']).pack(pady=(1, 4))
+                             font=("Segoe UI", change_font, "bold"),
+                             fg=change_color, bg=symbol_frame['bg']).pack(pady=(1, 4))
 
                 except Exception as e:
                     continue
@@ -722,6 +896,10 @@ class SignalDashboard(tk.Frame):
             logger.log(f"Error updating market overview: {e}", 'ERROR')
 
     def add_signal_entry(self, signal_type, symbol, confidence, price, indicators):
+        if not hasattr(self, 'signals_scrollable'):
+            return
+
+        scale = ResponsiveHelper.get_font_scale()
         timestamp = datetime.now().strftime("%H:%M:%S")
 
         signal_frame = tk.Frame(self.signals_scrollable, bg="#1f2937", relief="flat", bd=1)
@@ -730,27 +908,33 @@ class SignalDashboard(tk.Frame):
         header_frame = tk.Frame(signal_frame, bg="#1f2937")
         header_frame.pack(fill="x", padx=8, pady=4)
 
-        tk.Label(header_frame, text=f"[{timestamp}]", font=("Consolas", 8),
+        time_font = int(8 * scale)
+        tk.Label(header_frame, text=f"[{timestamp}]", font=("Consolas", time_font),
                  fg="#636e72", bg="#1f2937").pack(side="left")
 
         signal_color = "#00ff88" if "BUY" in signal_type else "#ff4757" if "SELL" in signal_type else "#74b9ff"
         signal_emoji = "📈" if "BUY" in signal_type else "📉" if "SELL" in signal_type else "⚡"
 
+        signal_font = int(9 * scale)
         tk.Label(header_frame, text=f"{signal_emoji} {signal_type}",
-                 font=("Segoe UI", 9, "bold"), fg=signal_color, bg="#1f2937").pack(side="left", padx=(8, 0))
+                 font=("Segoe UI", signal_font, "bold"),
+                 fg=signal_color, bg="#1f2937").pack(side="left", padx=(8, 0))
 
         conf_bg = "#00b894" if confidence > 0.8 else "#fdcb6e" if confidence > 0.6 else "#636e72"
         conf_frame = tk.Frame(header_frame, bg=conf_bg, relief="flat", bd=0)
         conf_frame.pack(side="right")
 
-        tk.Label(conf_frame, text=f"{confidence:.0%}", font=("Segoe UI", 8, "bold"),
+        conf_font = int(8 * scale)
+        tk.Label(conf_frame, text=f"{confidence:.0%}", font=("Segoe UI", conf_font, "bold"),
                  fg="white", bg=conf_bg).pack(padx=6, pady=1)
 
-        details_frame = tk.Frame(signal_frame, bg="#1f2937")
-        details_frame.pack(fill="x", padx=10, pady=(0, 6))
+        if not ResponsiveHelper.should_use_compact_layout():
+            details_frame = tk.Frame(signal_frame, bg="#1f2937")
+            details_frame.pack(fill="x", padx=10, pady=(0, 6))
 
-        tk.Label(details_frame, text=f"{symbol} | ${price:.4f}",
-                 font=("Consolas", 8), fg="#a0a0a0", bg="#1f2937").pack(anchor="w")
+            detail_font = int(8 * scale)
+            tk.Label(details_frame, text=f"{symbol} | ${price:.4f}",
+                     font=("Consolas", detail_font), fg="#a0a0a0", bg="#1f2937").pack(anchor="w")
 
         self.signals_canvas.update_idletasks()
         self.signals_canvas.yview_moveto(1)
@@ -760,20 +944,6 @@ class SignalDashboard(tk.Frame):
 config_manager = ConfigManager()
 logger = TradingLogger()
 bot = SafeTradingBot()
-
-# Global Variables
-client = None
-running = True
-price_data = []
-volume_data = []
-kline_data = []
-positions = {}
-orders = []
-balance_info = {}
-pnl_history = []
-auto_trading = False
-selected_symbol = "BTCUSDT"
-selected_timeframe = "1m"
 
 # Trading Settings
 settings = {
@@ -787,9 +957,6 @@ settings = {
     'enable_notifications': config_manager.config.getboolean('TRADING', 'enable_notifications', fallback=True)
 }
 
-update_thread = None
-strategy_thread = None
-
 
 # ===== API Functions =====
 def setup_api_credentials():
@@ -798,19 +965,28 @@ def setup_api_credentials():
     api_key, api_secret, testnet = config_manager.get_api_credentials()
 
     if not api_key or not api_secret:
+        scale = ResponsiveHelper.get_font_scale()
+        compact = ResponsiveHelper.should_use_compact_layout()
+
         cred_window = tk.Toplevel(root)
         cred_window.title("🔐 API Credentials Setup")
-        cred_window.geometry("600x500")
+
+        if compact:
+            cred_window.geometry("500x450")
+        else:
+            cred_window.geometry("600x500")
+
         cred_window.configure(bg="#1e1e2f")
         cred_window.transient(root)
         cred_window.grab_set()
 
-        header_frame = tk.Frame(cred_window, bg="#0984e3", height=80)
+        header_font = int(16 * scale)
+        header_frame = tk.Frame(cred_window, bg="#0984e3", height=int(80 * scale))
         header_frame.pack(fill="x")
         header_frame.pack_propagate(False)
 
         tk.Label(header_frame, text="🔐 Secure API Connection",
-                 font=("Segoe UI", 16, "bold"), fg="white", bg="#0984e3").pack(pady=25)
+                 font=("Segoe UI", header_font, "bold"), fg="white", bg="#0984e3").pack(pady=int(25 * scale))
 
         warning_card = ModernCard(cred_window, title="⚠️ Security Notice", bg_color="#e17055")
         warning_card.pack(fill="x", padx=20, pady=15)
@@ -819,21 +995,25 @@ def setup_api_credentials():
 Ensure your computer is secure and never share these credentials.
 Use testnet for learning and practice trading."""
 
+        warning_font = int(10 * scale)
         tk.Label(warning_card, text=warning_text, fg="white", bg="#e17055",
-                 font=("Segoe UI", 10), justify="left", wraplength=500).pack(padx=15, pady=10)
+                 font=("Segoe UI", warning_font), justify="left", wraplength=int(500 * scale)).pack(padx=15, pady=10)
 
         input_card = ModernCard(cred_window, title="🔑 API Configuration")
         input_card.pack(fill="both", expand=True, padx=20, pady=15)
 
+        label_font = int(10 * scale)
+        entry_font = int(11 * scale)
+
         tk.Label(input_card, text="Binance API Key:", fg="white", bg="#2d3436",
-                 font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=15, pady=(10, 5))
-        api_key_entry = tk.Entry(input_card, font=("Consolas", 11), bg="#636e72", fg="white",
+                 font=("Segoe UI", label_font, "bold")).pack(anchor="w", padx=15, pady=(10, 5))
+        api_key_entry = tk.Entry(input_card, font=("Consolas", entry_font), bg="#636e72", fg="white",
                                  insertbackground="white", relief="flat", bd=5)
         api_key_entry.pack(fill="x", padx=15, pady=5)
 
         tk.Label(input_card, text="Binance API Secret:", fg="white", bg="#2d3436",
-                 font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=15, pady=(15, 5))
-        api_secret_entry = tk.Entry(input_card, font=("Consolas", 11), bg="#636e72", fg="white",
+                 font=("Segoe UI", label_font, "bold")).pack(anchor="w", padx=15, pady=(15, 5))
+        api_secret_entry = tk.Entry(input_card, font=("Consolas", entry_font), bg="#636e72", fg="white",
                                     insertbackground="white", relief="flat", bd=5, show="*")
         api_secret_entry.pack(fill="x", padx=15, pady=5)
 
@@ -843,7 +1023,7 @@ Use testnet for learning and practice trading."""
         testnet_var = tk.BooleanVar(value=True)
         testnet_check = tk.Checkbutton(testnet_frame, text="🧪 Use Testnet (Recommended for testing)",
                                        variable=testnet_var, fg="#74b9ff", bg="#2d3436",
-                                       selectcolor="#0984e3", font=("Segoe UI", 10))
+                                       selectcolor="#0984e3", font=("Segoe UI", label_font))
         testnet_check.pack(anchor="w")
 
         def save_and_connect():
@@ -895,7 +1075,12 @@ def connect_api():
         logger.log(f"Successfully connected to Binance Futures {network_type}", 'SUCCESS')
         start_data_updates()
 
-        connection_status.set(f"🟢 Connected ({network_type})")
+        # Update connection status
+        try:
+            app.connection_status.set(f"🟢 Connected ({network_type})")
+        except:
+            pass
+
         show_modern_notification(f"Connected to {network_type} Environment", "success")
 
     except Exception as e:
@@ -1138,9 +1323,9 @@ def auto_trading_strategy():
 
             signal, confidence = bot.generate_signal(df)
 
-            if hasattr(root, 'signal_dashboard'):
+            if hasattr(app, 'signal_dashboard'):
                 latest_price = df.iloc[-1]['close']
-                root.after(0, lambda: root.signal_dashboard.update_signal_meter(signal, confidence))
+                root.after(0, lambda: app.signal_dashboard.update_signal_meter(signal, confidence))
 
                 if signal and confidence > 0.7:
                     indicators = {
@@ -1148,7 +1333,7 @@ def auto_trading_strategy():
                         'ema_9': df.iloc[-1]['ema_9'],
                         'ema_21': df.iloc[-1]['ema_21']
                     }
-                    root.after(0, lambda: root.signal_dashboard.add_signal_entry(
+                    root.after(0, lambda: app.signal_dashboard.add_signal_entry(
                         signal, selected_symbol, confidence, latest_price, indicators))
 
             if signal and confidence > 0.8:
@@ -1250,8 +1435,12 @@ def update_price_display(price):
             color = "#74b9ff"
             price_text = f"📊 {selected_symbol}\n${price:,.6f}\nInitializing..."
 
-        price_var.set(price_text)
-        price_label.config(fg=color)
+        try:
+            app.price_var.set(price_text)
+            if hasattr(app, 'price_label') and app.price_label:
+                app.price_label.config(fg=color)
+        except:
+            pass
 
     except Exception as e:
         logger.log(f"Error updating price display: {e}", 'ERROR')
@@ -1266,12 +1455,16 @@ def update_account_info():
         balance = float(account['totalWalletBalance'])
         unrealized_pnl = float(account['totalUnrealizedProfit'])
 
-        balance_var.set(f"💰 ${balance:,.2f}")
+        try:
+            app.balance_var.set(f"💰 ${balance:,.2f}")
 
-        pnl_color = "#00ff88" if unrealized_pnl >= 0 else "#ff4757"
-        pnl_icon = "📈" if unrealized_pnl >= 0 else "📉"
-        pnl_var.set(f"{pnl_icon} ${unrealized_pnl:+,.2f}")
-        pnl_label.config(fg=pnl_color)
+            pnl_color = "#00ff88" if unrealized_pnl >= 0 else "#ff4757"
+            pnl_icon = "📈" if unrealized_pnl >= 0 else "📉"
+            app.pnl_var.set(f"{pnl_icon} ${unrealized_pnl:+,.2f}")
+            if hasattr(app, 'pnl_label') and app.pnl_label:
+                app.pnl_label.config(fg=pnl_color)
+        except:
+            pass
 
         pnl_history.append(unrealized_pnl)
         if len(pnl_history) > 50:
@@ -1283,11 +1476,11 @@ def update_account_info():
 
 def update_portfolio_displays():
     try:
-        if hasattr(root, 'portfolio_manager'):
-            root.portfolio_manager.update_portfolio()
+        if hasattr(app, 'portfolio_manager'):
+            app.portfolio_manager.update_portfolio()
 
-        if hasattr(root, 'signal_dashboard'):
-            root.signal_dashboard.update_market_overview()
+        if hasattr(app, 'signal_dashboard'):
+            app.signal_dashboard.update_market_overview()
 
     except Exception as e:
         logger.log(f"Error updating portfolio displays: {e}", 'ERROR')
@@ -1327,29 +1520,47 @@ Auto trading will place real orders. Continue?"""
     auto_trading = not auto_trading
 
     if auto_trading:
-        auto_btn.configure(text="🛑 STOP AUTO TRADING")
+        try:
+            app.auto_btn.configure(text="🛑 STOP AUTO TRADING")
+        except:
+            pass
         strategy_thread = threading.Thread(target=auto_trading_strategy, daemon=True)
         strategy_thread.start()
         logger.log("Auto Trading activated - Enhanced safety mode enabled", 'AUTO')
-        auto_status.set("🤖 Auto Trading ON")
+        try:
+            app.auto_status.set("🤖 Auto Trading ON")
+        except:
+            pass
         show_modern_notification("Auto Trading Started", "success")
     else:
-        auto_btn.configure(text="🚀 START AUTO TRADING")
+        try:
+            app.auto_btn.configure(text="🚀 START AUTO TRADING")
+        except:
+            pass
         logger.log("Auto Trading deactivated", 'AUTO')
-        auto_status.set("👤 Manual Mode")
+        try:
+            app.auto_status.set("👤 Manual Mode")
+        except:
+            pass
         show_modern_notification("Auto Trading Stopped", "info")
 
 
 def show_modern_notification(message, notification_type="info"):
     try:
+        scale = ResponsiveHelper.get_font_scale()
+
         notification = tk.Toplevel(root)
         notification.title("Trading Alert")
-        notification.geometry("400x120")
+
+        width = int(400 * scale)
+        height = int(120 * scale)
+        notification.geometry(f"{width}x{height}")
+
         notification.attributes('-topmost', True)
         notification.transient(root)
         notification.overrideredirect(True)
 
-        x = root.winfo_rootx() + root.winfo_width() - 420
+        x = root.winfo_rootx() + root.winfo_width() - width - 20
         y = root.winfo_rooty() + 50
         notification.geometry(f"+{x}+{y}")
 
@@ -1360,18 +1571,20 @@ def show_modern_notification(message, notification_type="info"):
             'info': {'bg': '#74b9ff', 'icon': 'ℹ️'}
         }
 
-        config = colors.get(notification_type, colors['info'])
-        notification.configure(bg=config['bg'])
+        color_config = colors.get(notification_type, colors['info'])
+        notification.configure(bg=color_config['bg'])
 
-        content_frame = tk.Frame(notification, bg=config['bg'])
-        content_frame.pack(fill="both", expand=True, padx=15, pady=15)
+        content_frame = tk.Frame(notification, bg=color_config['bg'])
+        content_frame.pack(fill="both", expand=True, padx=int(15 * scale), pady=int(15 * scale))
 
-        icon_label = tk.Label(content_frame, text=config['icon'], fg="white", bg=config['bg'],
-                              font=("Segoe UI", 16))
-        icon_label.pack(side="left", padx=(0, 10))
+        icon_font = int(16 * scale)
+        icon_label = tk.Label(content_frame, text=color_config['icon'], fg="white", bg=color_config['bg'],
+                              font=("Segoe UI", icon_font))
+        icon_label.pack(side="left", padx=(0, int(10 * scale)))
 
-        msg_label = tk.Label(content_frame, text=message, fg="white", bg=config['bg'],
-                             font=("Segoe UI", 11, "bold"), wraplength=300)
+        msg_font = int(11 * scale)
+        msg_label = tk.Label(content_frame, text=message, fg="white", bg=color_config['bg'],
+                             font=("Segoe UI", msg_font, "bold"), wraplength=int(300 * scale))
         msg_label.pack(side="left", fill="both", expand=True)
 
         notification.after(4000, notification.destroy)
@@ -1494,17 +1707,26 @@ def emergency_stop():
 def change_symbol():
     global selected_symbol
 
+    scale = ResponsiveHelper.get_font_scale()
+    compact = ResponsiveHelper.should_use_compact_layout()
+
     symbol_window = tk.Toplevel(root)
     symbol_window.title("📊 Select Trading Symbol")
-    symbol_window.geometry("500x600")
+
+    if compact:
+        symbol_window.geometry("400x500")
+    else:
+        symbol_window.geometry("500x600")
+
     symbol_window.configure(bg="#0d1117")
 
-    header = tk.Frame(symbol_window, bg="#1f2937", height=80)
+    header_font = int(16 * scale)
+    header = tk.Frame(symbol_window, bg="#1f2937", height=int(80 * scale))
     header.pack(fill="x")
     header.pack_propagate(False)
 
     tk.Label(header, text="📊 Symbol Selection",
-             font=("Segoe UI", 16, "bold"), fg="#74b9ff", bg="#1f2937").pack(pady=25)
+             font=("Segoe UI", header_font, "bold"), fg="#74b9ff", bg="#1f2937").pack(pady=int(25 * scale))
 
     popular_card = ModernCard(symbol_window, title="⭐ Popular Symbols")
     popular_card.pack(fill="both", expand=True, padx=20, pady=15)
@@ -1518,23 +1740,28 @@ def change_symbol():
     symbol_grid = tk.Frame(popular_content, bg="#2d3436")
     symbol_grid.pack(fill="both", expand=True)
 
+    columns = 2 if compact else 2
+
     for i, symbol in enumerate(popular_symbols):
-        row = i // 2
-        col = i % 2
+        row = i // columns
+        col = i % columns
 
         btn = ModernButton(symbol_grid, text=symbol,
                            command=lambda s=symbol: select_symbol(s, symbol_window),
                            style="primary")
         btn.grid(row=row, column=col, padx=5, pady=5, sticky="ew")
 
-    symbol_grid.grid_columnconfigure(0, weight=1)
-    symbol_grid.grid_columnconfigure(1, weight=1)
+    for c in range(columns):
+        symbol_grid.grid_columnconfigure(c, weight=1)
 
 
 def select_symbol(symbol, window):
     global selected_symbol
     selected_symbol = symbol
-    symbol_var.set(f"Symbol: {selected_symbol}")
+    try:
+        app.symbol_var.set(f"Symbol: {selected_symbol}")
+    except:
+        pass
     price_data.clear()
     logger.log(f"Symbol changed to {selected_symbol}", 'INFO')
     show_modern_notification(f"Symbol changed to {selected_symbol}", "info")
@@ -1544,17 +1771,26 @@ def select_symbol(symbol, window):
 def change_timeframe():
     global selected_timeframe
 
+    scale = ResponsiveHelper.get_font_scale()
+    compact = ResponsiveHelper.should_use_compact_layout()
+
     tf_window = tk.Toplevel(root)
     tf_window.title("⏱️ Select Timeframe")
-    tf_window.geometry("400x500")
+
+    if compact:
+        tf_window.geometry("350x450")
+    else:
+        tf_window.geometry("400x500")
+
     tf_window.configure(bg="#0d1117")
 
-    header = tk.Frame(tf_window, bg="#1f2937", height=80)
+    header_font = int(16 * scale)
+    header = tk.Frame(tf_window, bg="#1f2937", height=int(80 * scale))
     header.pack(fill="x")
     header.pack_propagate(False)
 
     tk.Label(header, text="⏱️ Timeframe Selection",
-             font=("Segoe UI", 16, "bold"), fg="#74b9ff", bg="#1f2937").pack(pady=25)
+             font=("Segoe UI", header_font, "bold"), fg="#74b9ff", bg="#1f2937").pack(pady=int(25 * scale))
 
     timeframes = {
         "Short Term": ["1m", "3m", "5m", "15m"],
@@ -1569,37 +1805,62 @@ def change_timeframe():
         content = tk.Frame(card, bg="#2d3436")
         content.pack(fill="x", padx=15, pady=15)
 
-        btn_frame = tk.Frame(content, bg="#2d3436")
-        btn_frame.pack(fill="x")
+        if compact:
+            # Stacked layout for small screens
+            for i, tf in enumerate(tfs):
+                if i % 2 == 0:
+                    btn_frame = tk.Frame(content, bg="#2d3436")
+                    btn_frame.pack(fill="x", pady=2)
 
-        for i, tf in enumerate(tfs):
-            btn = ModernButton(btn_frame, text=tf,
-                               command=lambda t=tf: select_timeframe(t, tf_window),
-                               style="primary")
-            btn.pack(side="left", fill="x", expand=True, padx=2)
+                btn = ModernButton(btn_frame, text=tf,
+                                   command=lambda t=tf: select_timeframe(t, tf_window),
+                                   style="primary")
+                btn.pack(side="left", fill="x", expand=True, padx=2)
+        else:
+            # Horizontal layout
+            btn_frame = tk.Frame(content, bg="#2d3436")
+            btn_frame.pack(fill="x")
+
+            for tf in tfs:
+                btn = ModernButton(btn_frame, text=tf,
+                                   command=lambda t=tf: select_timeframe(t, tf_window),
+                                   style="primary")
+                btn.pack(side="left", fill="x", expand=True, padx=2)
 
 
 def select_timeframe(tf, window):
     global selected_timeframe
     selected_timeframe = tf
-    timeframe_var.set(f"Timeframe: {selected_timeframe}")
+    try:
+        app.timeframe_var.set(f"Timeframe: {selected_timeframe}")
+    except:
+        pass
     logger.log(f"Timeframe changed to {selected_timeframe}", 'INFO')
     show_modern_notification(f"Timeframe changed to {selected_timeframe}", "info")
     window.destroy()
 
 
 def open_settings():
+    scale = ResponsiveHelper.get_font_scale()
+    compact = ResponsiveHelper.should_use_compact_layout()
+
     settings_window = tk.Toplevel(root)
     settings_window.title("⚙️ Trading Settings")
-    settings_window.geometry("700x600")
+
+    if compact:
+        settings_window.geometry("500x550")
+    else:
+        settings_window.geometry("700x600")
+
     settings_window.configure(bg="#0d1117")
 
-    header = tk.Frame(settings_window, bg="#1f2937", height=80)
+    header_font = int(16 * scale)
+    header = tk.Frame(settings_window, bg="#1f2937", height=int(80 * scale))
     header.pack(fill="x")
     header.pack_propagate(False)
 
     tk.Label(header, text="⚙️ Trading Configuration",
-             font=("Segoe UI", 16, "bold"), fg="#74b9ff", bg="#1f2937").pack(pady=25)
+             font=("Segoe UI", header_font, "bold"), fg="#74b9ff", bg="#1f2937").pack(pady=int(25 * scale))
 
     main_frame = tk.Frame(settings_window, bg="#0d1117")
     main_frame.pack(fill="both", expand=True, padx=20, pady=20)
@@ -1612,20 +1873,22 @@ def open_settings():
         card = ModernCard(parent, bg_color="#1f2937")
         card.pack(fill="x", pady=8)
 
+        label_font = int(11 * scale)
         label_frame = tk.Frame(card, bg="#1f2937")
         label_frame.pack(fill="x", padx=15, pady=8)
 
         tk.Label(label_frame, text=f"{label}:", fg="white", bg="#1f2937",
-                 font=("Segoe UI", 11, "bold")).pack(anchor="w")
+                 font=("Segoe UI", label_font, "bold")).pack(anchor="w")
 
         control_frame = tk.Frame(card, bg="#1f2937")
         control_frame.pack(fill="x", padx=15, pady=(0, 10))
 
-        scale = ttk.Scale(control_frame, from_=min_val, to=max_val, variable=var, orient='horizontal')
-        scale.pack(fill='x', pady=(5, 0))
+        scale_widget = ttk.Scale(control_frame, from_=min_val, to=max_val, variable=var, orient='horizontal')
+        scale_widget.pack(fill='x', pady=(5, 0))
 
+        value_font = int(10 * scale)
         value_label = tk.Label(control_frame, text="", fg="#00ff88", bg="#1f2937",
-                               font=("Segoe UI", 10, "bold"))
+                               font=("Segoe UI", value_font, "bold"))
         value_label.pack(anchor="w", pady=(5, 0))
 
         def update_label():
@@ -1664,17 +1927,26 @@ def open_settings():
 
 
 def show_trading_history():
+    scale = ResponsiveHelper.get_font_scale()
+    compact = ResponsiveHelper.should_use_compact_layout()
+
     history_window = tk.Toplevel(root)
     history_window.title("📜 Trading History")
-    history_window.geometry("1000x600")
+
+    if compact:
+        history_window.geometry("700x500")
+    else:
+        history_window.geometry("1000x600")
+
     history_window.configure(bg="#0d1117")
 
-    header = tk.Frame(history_window, bg="#1f2937", height=80)
+    header_font = int(16 * scale)
+    header = tk.Frame(history_window, bg="#1f2937", height=int(80 * scale))
     header.pack(fill="x")
     header.pack_propagate(False)
 
     tk.Label(header, text="📜 Trading History",
-             font=("Segoe UI", 16, "bold"), fg="#74b9ff", bg="#1f2937").pack(pady=25)
+             font=("Segoe UI", header_font, "bold"), fg="#74b9ff", bg="#1f2937").pack(pady=int(25 * scale))
 
     main_frame = tk.Frame(history_window, bg="#0d1117")
     main_frame.pack(fill="both", expand=True, padx=20, pady=20)
@@ -1685,11 +1957,14 @@ def show_trading_history():
 
     if trades:
         columns = ("Time", "Symbol", "Side", "Quantity", "Price", "PnL", "Strategy")
-        tree = ttk.Treeview(main_frame, columns=columns, show="headings", height=20)
+        tree_height = int(15 * scale) if compact else int(20 * scale)
+        tree = ttk.Treeview(main_frame, columns=columns, show="headings", height=tree_height)
+
+        col_width = int(100 * scale) if compact else int(120 * scale)
 
         for col in columns:
             tree.heading(col, text=col)
-            tree.column(col, width=120)
+            tree.column(col, width=col_width)
 
         for trade in trades:
             formatted_time = trade[1][:19] if len(trade[1]) > 19 else trade[1]
@@ -1706,22 +1981,32 @@ def show_trading_history():
         scrollbar.pack(side="right", fill="y")
 
     else:
+        no_data_font = int(14 * scale)
         tk.Label(main_frame, text="📭 No trading history available yet",
-                 fg="#74b9ff", bg="#0d1117", font=("Segoe UI", 14)).pack(pady=100)
+                 fg="#74b9ff", bg="#0d1117", font=("Segoe UI", no_data_font)).pack(pady=100)
 
 
 def show_market_scanner():
+    scale = ResponsiveHelper.get_font_scale()
+    compact = ResponsiveHelper.should_use_compact_layout()
+
     scanner_window = tk.Toplevel(root)
     scanner_window.title("🔍 Market Scanner")
-    scanner_window.geometry("800x600")
+
+    if compact:
+        scanner_window.geometry("650x500")
+    else:
+        scanner_window.geometry("800x600")
+
     scanner_window.configure(bg="#0d1117")
 
-    header = tk.Frame(scanner_window, bg="#1f2937", height=80)
+    header_font = int(16 * scale)
+    header = tk.Frame(scanner_window, bg="#1f2937", height=int(80 * scale))
     header.pack(fill="x")
     header.pack_propagate(False)
 
     tk.Label(header, text="🔍 Market Scanner",
-             font=("Segoe UI", 16, "bold"), fg="#74b9ff", bg="#1f2937").pack(pady=25)
+             font=("Segoe UI", header_font, "bold"), fg="#74b9ff", bg="#1f2937").pack(pady=int(25 * scale))
 
     main_frame = tk.Frame(scanner_window, bg="#0d1117")
     main_frame.pack(fill="both", expand=True, padx=20, pady=20)
@@ -1738,11 +2023,14 @@ def show_market_scanner():
             scanner_content.pack(fill="both", expand=True, padx=15, pady=15)
 
             columns = ("Rank", "Symbol", "Price", "Change%", "Volume", "Signal")
-            tree = ttk.Treeview(scanner_content, columns=columns, show="headings", height=15)
+            tree_height = int(12 * scale) if compact else int(15 * scale)
+            tree = ttk.Treeview(scanner_content, columns=columns, show="headings", height=tree_height)
+
+            col_width = int(90 * scale) if compact else int(100 * scale)
 
             for col in columns:
                 tree.heading(col, text=col)
-                tree.column(col, width=100)
+                tree.column(col, width=col_width)
 
             for i, ticker in enumerate(volume_sorted):
                 symbol = ticker['symbol']
@@ -1765,25 +2053,36 @@ def show_market_scanner():
             scrollbar.pack(side="right", fill="y")
 
         except Exception as e:
+            error_font = int(12 * scale)
             tk.Label(main_frame, text=f"Error loading scanner data: {e}",
-                     fg="#ff4757", bg="#0d1117", font=("Segoe UI", 12)).pack(pady=50)
+                     fg="#ff4757", bg="#0d1117", font=("Segoe UI", error_font)).pack(pady=50)
     else:
+        info_font = int(12 * scale)
         tk.Label(main_frame, text="Please connect API first to use scanner",
-                 fg="#74b9ff", bg="#0d1117", font=("Segoe UI", 12)).pack(pady=50)
+                 fg="#74b9ff", bg="#0d1117", font=("Segoe UI", info_font)).pack(pady=50)
 
 
 def show_portfolio_analysis():
+    scale = ResponsiveHelper.get_font_scale()
+    compact = ResponsiveHelper.should_use_compact_layout()
+
     portfolio_window = tk.Toplevel(root)
     portfolio_window.title("📈 Portfolio Analysis")
-    portfolio_window.geometry("800x600")
+
+    if compact:
+        portfolio_window.geometry("600x500")
+    else:
+        portfolio_window.geometry("800x600")
+
     portfolio_window.configure(bg="#0d1117")
 
-    header = tk.Frame(portfolio_window, bg="#1f2937", height=80)
+    header_font = int(16 * scale)
+    header = tk.Frame(portfolio_window, bg="#1f2937", height=int(80 * scale))
     header.pack(fill="x")
     header.pack_propagate(False)
 
     tk.Label(header, text="📈 Portfolio Analytics",
-             font=("Segoe UI", 16, "bold"), fg="#74b9ff", bg="#1f2937").pack(pady=25)
+             font=("Segoe UI", header_font, "bold"), fg="#74b9ff", bg="#1f2937").pack(pady=int(25 * scale))
 
     main_frame = tk.Frame(portfolio_window, bg="#0d1117")
     main_frame.pack(fill="both", expand=True, padx=20, pady=20)
@@ -1814,12 +2113,14 @@ def show_portfolio_analysis():
 Risk/Reward Ratio: {settings['take_profit_percent'] / settings['stop_loss_percent']:.2f}:1
 Daily Risk Limit: {settings['risk_percent']}% per trade"""
 
+        metrics_font = int(10 * scale)
         tk.Label(metrics_content, text=metrics_text, fg="white", bg="#2d3436",
-                 font=("Consolas", 10), justify="left").pack(anchor="w")
+                 font=("Consolas", metrics_font), justify="left").pack(anchor="w")
 
     else:
+        no_data_font = int(14 * scale)
         tk.Label(main_frame, text="📭 Connect API and start trading to see analytics",
-                 fg="#74b9ff", bg="#0d1117", font=("Segoe UI", 14)).pack(pady=100)
+                 fg="#74b9ff", bg="#0d1117", font=("Segoe UI", no_data_font)).pack(pady=100)
 
 
 def on_close():
@@ -1857,25 +2158,31 @@ class EnhancedLogFrame(tk.Frame):
         self.setup_ui()
 
     def setup_ui(self):
-        header = tk.Frame(self, bg="#2d3436", height=35)
+        scale = ResponsiveHelper.get_font_scale()
+        compact = ResponsiveHelper.should_use_compact_layout()
+
+        header_height = int(30 * scale) if compact else int(35 * scale)
+        header = tk.Frame(self, bg="#2d3436", height=header_height)
         header.pack(fill="x")
         header.pack_propagate(False)
 
+        title_font = int(10 * scale) if compact else int(11 * scale)
         tk.Label(header, text="📊 Activity Log",
-                 font=("Segoe UI", 11, "bold"), fg="#74b9ff", bg="#2d3436").pack(side="left", padx=15, pady=8)
+                 font=("Segoe UI", title_font, "bold"), fg="#74b9ff", bg="#2d3436").pack(side="left", padx=15, pady=8)
 
         filter_frame = tk.Frame(header, bg="#2d3436")
         filter_frame.pack(side="right", padx=15, pady=5)
 
         filters = ["ALL", "TRADE", "AUTO", "SIGNAL", "ERROR"]
+        filter_font = int(6 * scale) if compact else int(7 * scale)
 
         for filter_type in filters:
             color = "#74b9ff" if filter_type == "ALL" else logger.log_types.get(filter_type, {}).get('color', '#636e72')
             btn = tk.Button(filter_frame, text=filter_type,
                             command=lambda f=filter_type: self.set_filter(f),
                             bg=color, fg="white" if filter_type != "ALL" else "#2d3436",
-                            font=("Segoe UI", 7, "bold"), relief="flat", bd=0,
-                            padx=6, pady=2)
+                            font=("Segoe UI", filter_font, "bold"), relief="flat", bd=0,
+                            padx=4, pady=2)
             btn.pack(side="left", padx=1)
 
         log_container = tk.Frame(self, bg="#1e1e2f")
@@ -1909,29 +2216,38 @@ class EnhancedLogFrame(tk.Frame):
         if self.filter_var.get() != "ALL" and log_entry['type'] != self.filter_var.get():
             return
 
+        scale = ResponsiveHelper.get_font_scale()
+        compact = ResponsiveHelper.should_use_compact_layout()
+
         entry_frame = tk.Frame(self.scrollable_frame, bg="#2d3436", relief="flat", bd=1)
         entry_frame.pack(fill="x", padx=3, pady=1)
 
         header_frame = tk.Frame(entry_frame, bg="#2d3436")
         header_frame.pack(fill="x", padx=8, pady=3)
 
+        time_font = int(7 * scale) if compact else int(8 * scale)
         time_label = tk.Label(header_frame, text=f"[{log_entry['timestamp']}]",
-                              font=("Consolas", 8), fg="#636e72", bg="#2d3436")
+                              font=("Consolas", time_font), fg="#636e72", bg="#2d3436")
         time_label.pack(side="left")
 
+        icon_font = int(8 * scale) if compact else int(9 * scale)
         icon_label = tk.Label(header_frame, text=log_entry['icon'],
-                              font=("Segoe UI", 9), bg="#2d3436")
+                              font=("Segoe UI", icon_font), bg="#2d3436")
         icon_label.pack(side="left", padx=(8, 3))
 
+        type_font = int(7 * scale) if compact else int(8 * scale)
         type_label = tk.Label(header_frame, text=log_entry['type'],
-                              font=("Segoe UI", 8, "bold"),
+                              font=("Segoe UI", type_font, "bold"),
                               fg=logger.log_types.get(log_entry['type'], {}).get('color', 'white'),
                               bg="#2d3436")
         type_label.pack(side="left")
 
+        msg_font = int(8 * scale) if compact else int(9 * scale)
+        wrap_length = int(200 * scale) if compact else int(280 * scale)
+
         msg_label = tk.Label(entry_frame, text=log_entry['message'],
-                             font=("Segoe UI", 9), fg="white", bg="#2d3436",
-                             wraplength=280, justify="left")
+                             font=("Segoe UI", msg_font), fg="white", bg="#2d3436",
+                             wraplength=wrap_length, justify="left")
         msg_label.pack(anchor="w", padx=10, pady=(0, 3))
 
         self.log_canvas.update_idletasks()
@@ -1947,321 +2263,515 @@ class EnhancedLogFrame(tk.Frame):
                 self.add_log_entry(log_entry)
 
 
-# ===== GUI Setup =====
-root = tk.Tk()
-root.title("🚀 Advanced Trading Bot v2.1 - Portfolio & Signal Dashboard")
-root.geometry("1500x850")
-root.configure(bg="#0d1117")
-root.protocol("WM_DELETE_WINDOW", on_close)
-root.resizable(True, True)
-
-# Modern style configuration
-style = ttk.Style()
-style.theme_use("clam")
-
-# ===== Clean Layout =====
-# Header
-header_frame = tk.Frame(root, bg="#1f2937", height=80)
-header_frame.pack(fill="x")
-header_frame.pack_propagate(False)
-
-header_content = tk.Frame(header_frame, bg="#1f2937")
-header_content.pack(fill="both", expand=True, padx=20, pady=15)
-
-# Title
-title_frame = tk.Frame(header_content, bg="#1f2937")
-title_frame.pack(side="left", fill="y")
-
-tk.Label(title_frame, text="🚀 Advanced Portfolio & Signal Dashboard",
-         font=("Segoe UI", 18, "bold"), fg="#74b9ff", bg="#1f2937").pack(anchor="w")
-tk.Label(title_frame, text="v2.1 Enhanced Edition - Real-time Portfolio Management & AI Signals",
-         font=("Segoe UI", 10), fg="#a0a0a0", bg="#1f2937").pack(anchor="w", pady=(3, 0))
-
-# Status panel
-status_panel = tk.Frame(header_content, bg="#2d3436", relief="flat", bd=1)
-status_panel.pack(side="right", padx=15)
-
-status_content = tk.Frame(status_panel, bg="#2d3436")
-status_content.pack(padx=15, pady=10)
-
-price_var = tk.StringVar(value="📊 Loading...")
-price_label = tk.Label(status_content, textvariable=price_var,
-                       font=("Consolas", 10, "bold"), fg="#00ff88", bg="#2d3436")
-price_label.pack()
-
-balance_var = tk.StringVar(value="💰 Balance: Connecting...")
-balance_label = tk.Label(status_content, textvariable=balance_var,
-                         font=("Consolas", 9), fg="white", bg="#2d3436")
-balance_label.pack()
-
-pnl_var = tk.StringVar(value="📊 PnL: Connecting...")
-pnl_label = tk.Label(status_content, textvariable=pnl_var,
-                     font=("Consolas", 9), fg="white", bg="#2d3436")
-pnl_label.pack()
-
-connection_status = tk.StringVar(value="🔴 Disconnected")
-connection_label = tk.Label(status_content, textvariable=connection_status,
-                            fg="#74b9ff", bg="#2d3436", font=("Segoe UI", 8, "bold"))
-connection_label.pack(pady=(5, 0))
-
-# Main content container
-main_container = tk.Frame(root, bg="#0d1117")
-main_container.pack(fill="both", expand=True, padx=15, pady=15)
-
-# ===== Left Panel - Control Center (CLEAN) =====
-left_panel = tk.Frame(main_container, bg="#0d1117", width=300)
-left_panel.pack(side="left", fill="y", padx=(0, 10))
-left_panel.pack_propagate(False)
-
-# Connection Card
-connection_card = ModernCard(left_panel, title="🔗 API Connection")
-connection_card.pack(fill="x", pady=5)
-
-connection_content = tk.Frame(connection_card, bg="#2d3436")
-connection_content.pack(fill="x", padx=10, pady=10)
-
-ModernButton(connection_content, text="🔐 Setup & Connect API",
-             command=setup_api_credentials, style="primary").pack(fill="x")
-
-# Market Selection Card
-market_card = ModernCard(left_panel, title="📊 Market Selection")
-market_card.pack(fill="x", pady=5)
-
-market_content = tk.Frame(market_card, bg="#2d3436")
-market_content.pack(fill="x", padx=10, pady=10)
-
-symbol_var = tk.StringVar(value=f"Symbol: {selected_symbol}")
-symbol_label = tk.Label(market_content, textvariable=symbol_var, fg="white", bg="#2d3436",
-                        font=("Segoe UI", 10, "bold"))
-symbol_label.pack()
-
-timeframe_var = tk.StringVar(value=f"Timeframe: {selected_timeframe}")
-timeframe_label = tk.Label(market_content, textvariable=timeframe_var, fg="#a0a0a0", bg="#2d3436",
-                           font=("Segoe UI", 9))
-timeframe_label.pack()
-
-market_btn_frame = tk.Frame(market_content, bg="#2d3436")
-market_btn_frame.pack(fill="x", pady=8)
-
-ModernButton(market_btn_frame, text="📈 Symbol", command=change_symbol,
-             style="dark").pack(side="left", fill="x", expand=True, padx=(0, 3))
-ModernButton(market_btn_frame, text="⏱️ Time", command=change_timeframe,
-             style="dark").pack(side="right", fill="x", expand=True, padx=(3, 0))
-
-# Trading Card
-trading_card = ModernCard(left_panel, title="⚡ Manual Trading")
-trading_card.pack(fill="x", pady=5)
-
-trading_content = tk.Frame(trading_card, bg="#2d3436")
-trading_content.pack(fill="x", padx=10, pady=10)
-
-trade_btn_frame = tk.Frame(trading_content, bg="#2d3436")
-trade_btn_frame.pack(fill="x", pady=5)
-
-buy_btn = ModernButton(trade_btn_frame, text="📈 BUY",
-                       command=lambda: place_smart_order(SIDE_BUY, "MANUAL"),
-                       style="success")
-buy_btn.pack(side="left", fill="x", expand=True, padx=(0, 3))
-
-sell_btn = ModernButton(trade_btn_frame, text="📉 SELL",
-                        command=lambda: place_smart_order(SIDE_SELL, "MANUAL"),
-                        style="danger")
-sell_btn.pack(side="right", fill="x", expand=True, padx=(3, 0))
-
-risk_info = tk.Label(trading_content,
-                     text=f"Risk: {settings['risk_percent']}% | SL: {settings['stop_loss_percent']}% | TP: {settings['take_profit_percent']}%",
-                     fg="#74b9ff", bg="#2d3436", font=("Segoe UI", 8))
-risk_info.pack(pady=(8, 0))
-
-# ===== AUTO TRADING CARD - PROMINENT =====
-auto_card = ModernCard(left_panel, title="🤖 AUTO TRADING", bg_color="#0d5016", title_color="#00ff88")
-auto_card.pack(fill="x", pady=8)
-
-auto_content = tk.Frame(auto_card, bg="#0d5016")
-auto_content.pack(fill="x", padx=10, pady=12)
-
-auto_btn = tk.Button(auto_content, text="🚀 START AUTO TRADING",
-                     command=toggle_auto_trading,
-                     bg="#00b894", fg="white",
-                     font=("Segoe UI", 11, "bold"),
-                     relief="flat", bd=0, padx=15, pady=10,
-                     cursor="hand2")
-auto_btn.pack(fill="x")
-
-
-def on_auto_hover(event):
-    auto_btn.config(bg="#00ff88")
-
-
-def on_auto_leave(event):
-    auto_btn.config(bg="#00b894")
-
-
-auto_btn.bind("<Enter>", on_auto_hover)
-auto_btn.bind("<Leave>", on_auto_leave)
-
-auto_status = tk.StringVar(value="👤 Manual Mode")
-auto_status_label = tk.Label(auto_content, textvariable=auto_status,
-                             fg="#00ff88", bg="#0d5016", font=("Segoe UI", 10, "bold"))
-auto_status_label.pack(pady=(8, 0))
-
-safety_info = tk.Label(auto_content,
-                       text=f"Daily: {bot.daily_trade_count}/{bot.max_daily_trades} trades",
-                       fg="#a0a0a0", bg="#0d5016", font=("Segoe UI", 8))
-safety_info.pack()
-
-# Emergency Controls Card
-emergency_card = ModernCard(left_panel, title="🚨 Emergency Controls", bg_color="#4a0e0e", title_color="#ff4757")
-emergency_card.pack(fill="x", pady=5)
-
-emergency_content = tk.Frame(emergency_card, bg="#4a0e0e")
-emergency_content.pack(fill="x", padx=10, pady=10)
-
-emergency_main_btn = tk.Button(emergency_content, text="🚨 EMERGENCY STOP",
-                               command=emergency_stop,
-                               bg="#d63031", fg="white",
-                               font=("Segoe UI", 10, "bold"),
-                               relief="raised", bd=2, padx=10, pady=6,
-                               cursor="hand2")
-emergency_main_btn.pack(fill="x", pady=(0, 5))
-
-
-def on_emergency_hover(event):
-    emergency_main_btn.config(bg="#ff7675")
-
-
-def on_emergency_leave(event):
-    emergency_main_btn.config(bg="#d63031")
-
-
-emergency_main_btn.bind("<Enter>", on_emergency_hover)
-emergency_main_btn.bind("<Leave>", on_emergency_leave)
-
-emergency_btn_frame = tk.Frame(emergency_content, bg="#4a0e0e")
-emergency_btn_frame.pack(fill="x")
-
-ModernButton(emergency_btn_frame, text="❌ Close All", command=close_all_positions,
-             style="warning").pack(side="left", fill="x", expand=True, padx=(0, 2))
-ModernButton(emergency_btn_frame, text="🚫 Cancel All", command=cancel_all_orders,
-             style="warning").pack(side="right", fill="x", expand=True, padx=(2, 0))
-
-# Tools Card
-tools_card = ModernCard(left_panel, title="📊 Tools")
-tools_card.pack(fill="x", pady=5)
-
-tools_content = tk.Frame(tools_card, bg="#2d3436")
-tools_content.pack(fill="x", padx=10, pady=10)
-
-tools_btn_frame1 = tk.Frame(tools_content, bg="#2d3436")
-tools_btn_frame1.pack(fill="x", pady=2)
-
-ModernButton(tools_btn_frame1, text="🔍 Scanner", command=show_market_scanner,
-             style="primary").pack(side="left", fill="x", expand=True, padx=(0, 2))
-ModernButton(tools_btn_frame1, text="📈 Analytics", command=show_portfolio_analysis,
-             style="primary").pack(side="right", fill="x", expand=True, padx=(2, 0))
-
-tools_btn_frame2 = tk.Frame(tools_content, bg="#2d3436")
-tools_btn_frame2.pack(fill="x", pady=2)
-
-ModernButton(tools_btn_frame2, text="📜 History", command=show_trading_history,
-             style="dark").pack(side="left", fill="x", expand=True, padx=(0, 2))
-ModernButton(tools_btn_frame2, text="⚙️ Settings", command=open_settings,
-             style="dark").pack(side="right", fill="x", expand=True, padx=(2, 0))
-
-# ===== Center Panel - Portfolio Manager =====
-center_panel = tk.Frame(main_container, bg="#0d1117")
-center_panel.pack(side="left", fill="both", expand=True, padx=(0, 10))
-
-portfolio_manager = PortfolioManager(center_panel)
-portfolio_manager.pack(fill="both", expand=True)
-root.portfolio_manager = portfolio_manager
-
-# ===== Right Panel - Signal Dashboard =====
-right_panel = tk.Frame(main_container, bg="#0d1117", width=380)
-right_panel.pack(side="right", fill="y")
-right_panel.pack_propagate(False)
-
-signal_dashboard = SignalDashboard(right_panel)
-signal_dashboard.pack(fill="both", expand=True)
-root.signal_dashboard = signal_dashboard
-
-# ===== Activity Log at Bottom =====
-bottom_panel = tk.Frame(root, bg="#0d1117", height=120)
-bottom_panel.pack(fill="x", side="bottom", padx=15, pady=(0, 15))
-bottom_panel.pack_propagate(False)
-
-log_frame = EnhancedLogFrame(bottom_panel)
-log_frame.pack(fill="both", expand=True)
-
-
-def update_log_ui(log_entry):
-    try:
-        root.after(0, lambda: log_frame.add_log_entry(log_entry))
-    except Exception as e:
-        print(f"Log UI update error: {e}")
-
-
-logger.ui_callback = update_log_ui
-
-# ===== Status Bar =====
-status_bar = tk.Frame(root, bg="#1f2937", height=40)
-status_bar.pack(fill="x", side="bottom")
-status_bar.pack_propagate(False)
-
-status_content = tk.Frame(status_bar, bg="#1f2937")
-status_content.pack(fill="both", expand=True, padx=20, pady=8)
-
-tk.Label(status_content, text="🚀 Portfolio & Signal Edition v2.1", fg="#74b9ff", bg="#1f2937",
-         font=("Segoe UI", 10, "bold")).pack(side="left")
-
-auto_status = tk.StringVar(value="👤 Manual Mode")
-tk.Label(status_content, textvariable=auto_status, fg="#74b9ff", bg="#1f2937",
-         font=("Segoe UI", 10, "bold")).pack(side="left", padx=50)
-
-safety_status = tk.StringVar(value=f"🚦 Daily: {bot.daily_trade_count}/{bot.max_daily_trades}")
-tk.Label(status_content, textvariable=safety_status, fg="#ffeaa7", bg="#1f2937",
-         font=("Segoe UI", 10, "bold")).pack(side="right")
-
-
-def update_status_indicators():
-    try:
-        if client:
-            api_key, api_secret, testnet = config_manager.get_api_credentials()
-            env_type = "🧪 Testnet" if testnet else "🔴 Live"
-            connection_status.set(f"🟢 Connected ({env_type})")
+# ===== Main Application Class =====
+class TradingApp:
+    def __init__(self, root):
+        self.root = root
+        self.setup_window()
+        self.create_ui_variables()
+        self.create_interface()
+        self.setup_callbacks()
+
+    def setup_window(self):
+        """Setup responsive window properties"""
+        # Get screen dimensions
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+
+        # Calculate responsive initial size
+        if screen_width <= 800:
+            initial_width, initial_height = 800, 600
+        elif screen_width <= 1024:
+            initial_width, initial_height = 900, 650
+        elif screen_width <= 1400:
+            initial_width, initial_height = 1200, 750
         else:
-            connection_status.set("🔴 Disconnected")
+            initial_width, initial_height = min(1500, int(screen_width * 0.8)), min(850, int(screen_height * 0.8))
 
-        if auto_trading:
-            auto_status.set("🤖 Auto Trading ACTIVE")
-            auto_btn.configure(text="🛑 STOP AUTO TRADING")
+        self.root.title("🚀 Advanced Trading Bot v2.1 - Responsive Portfolio Dashboard")
+        self.root.geometry(f"{initial_width}x{initial_height}")
+        self.root.configure(bg="#0d1117")
+        self.root.protocol("WM_DELETE_WINDOW", on_close)
+        self.root.resizable(True, True)
+        self.root.minsize(800, 600)
+
+        # Center window on screen
+        x = (screen_width // 2) - (initial_width // 2)
+        y = (screen_height // 2) - (initial_height // 2)
+        self.root.geometry(f"{initial_width}x{initial_height}+{x}+{y}")
+
+    def create_ui_variables(self):
+        """Create all UI variables safely"""
+        self.price_var = tk.StringVar(value="📊 Loading...")
+        self.balance_var = tk.StringVar(value="💰 Balance: Connecting...")
+        self.pnl_var = tk.StringVar(value="📊 PnL: Connecting...")
+        self.connection_status = tk.StringVar(value="🔴 Disconnected")
+        self.symbol_var = tk.StringVar(value=f"Symbol: {selected_symbol}")
+        self.timeframe_var = tk.StringVar(value=f"Timeframe: {selected_timeframe}")
+        self.auto_status = tk.StringVar(value="👤 Manual Mode")
+
+        # UI element references
+        self.price_label = None
+        self.pnl_label = None
+        self.auto_btn = None
+        self.safety_info = None
+
+    def create_interface(self):
+        """Create the main responsive interface"""
+        self.create_header()
+        self.create_main_content()
+        self.create_log_section()
+        self.create_status_bar()
+
+    def create_header(self):
+        """Create responsive header"""
+        scale = ResponsiveHelper.get_font_scale()
+        compact = ResponsiveHelper.should_use_compact_layout()
+
+        header_frame = tk.Frame(self.root, bg="#1f2937")
+        header_frame.pack(fill="x")
+
+        header_height = int(60 * scale) if compact else int(80 * scale)
+        header_frame.config(height=header_height)
+
+        header_content = tk.Frame(header_frame, bg="#1f2937")
+        header_content.pack(fill="both", expand=True, padx=20, pady=15)
+
+        # Title section
+        title_frame = tk.Frame(header_content, bg="#1f2937")
+        title_frame.pack(side="left", fill="y")
+
+        title_font = int(16 * scale) if compact else int(18 * scale)
+        title_text = "🚀 Trading Bot" if compact else "🚀 Advanced Portfolio & Signal Dashboard"
+
+        title_label = tk.Label(title_frame, text=title_text,
+                               font=("Segoe UI", title_font, "bold"), fg="#74b9ff", bg="#1f2937")
+        title_label.pack(anchor="w")
+
+        if not compact:
+            subtitle_font = int(10 * scale)
+            subtitle_label = tk.Label(title_frame, text="v2.1 Responsive Edition - Multi-Screen Support",
+                                      font=("Segoe UI", subtitle_font), fg="#a0a0a0", bg="#1f2937")
+            subtitle_label.pack(anchor="w", pady=(3, 0))
+
+        # Status panel for larger screens
+        if not compact:
+            status_panel = tk.Frame(header_content, bg="#2d3436", relief="flat", bd=1)
+            status_panel.pack(side="right", padx=15)
+
+            status_content = tk.Frame(status_panel, bg="#2d3436")
+            status_content.pack(padx=15, pady=10)
+
+            status_font = int(10 * scale)
+            self.price_label = tk.Label(status_content, textvariable=self.price_var,
+                                        font=("Consolas", status_font, "bold"), fg="#00ff88", bg="#2d3436")
+            self.price_label.pack()
+
+            balance_font = int(9 * scale)
+            balance_label = tk.Label(status_content, textvariable=self.balance_var,
+                                     font=("Consolas", balance_font), fg="white", bg="#2d3436")
+            balance_label.pack()
+
+            self.pnl_label = tk.Label(status_content, textvariable=self.pnl_var,
+                                      font=("Consolas", balance_font), fg="white", bg="#2d3436")
+            self.pnl_label.pack()
+
+            connection_font = int(8 * scale)
+            connection_label = tk.Label(status_content, textvariable=self.connection_status,
+                                        fg="#74b9ff", bg="#2d3436", font=("Segoe UI", connection_font, "bold"))
+            connection_label.pack(pady=(5, 0))
+
+    def create_main_content(self):
+        """Create responsive main content area"""
+        compact = ResponsiveHelper.should_use_compact_layout()
+
+        main_container = tk.Frame(self.root, bg="#0d1117")
+        main_container.pack(fill="both", expand=True, padx=15, pady=15)
+
+        if compact:
+            self.create_tabbed_layout(main_container)
         else:
-            auto_status.set("👤 Manual Mode")
-            auto_btn.configure(text="🚀 START AUTO TRADING")
+            self.create_panel_layout(main_container)
 
-        safety_status.set(f"🚦 Daily: {bot.daily_trade_count}/{bot.max_daily_trades}")
-        safety_info.config(text=f"Daily: {bot.daily_trade_count}/{bot.max_daily_trades} trades")
+    def create_tabbed_layout(self, parent):
+        """Create tabbed layout for small screens"""
+        notebook = ttk.Notebook(parent)
+        notebook.pack(fill="both", expand=True)
 
-        root.after(2000, update_status_indicators)
-    except:
-        root.after(2000, update_status_indicators)
+        # Controls Tab
+        controls_frame = tk.Frame(notebook, bg="#0d1117")
+        notebook.add(controls_frame, text="🎮 Controls")
+        self.create_control_panel(controls_frame)
+
+        # Portfolio Tab
+        portfolio_frame = tk.Frame(notebook, bg="#0d1117")
+        notebook.add(portfolio_frame, text="💰 Portfolio")
+
+        self.portfolio_manager = PortfolioManager(portfolio_frame)
+        self.portfolio_manager.pack(fill="both", expand=True)
+
+        # Signals Tab
+        signals_frame = tk.Frame(notebook, bg="#0d1117")
+        notebook.add(signals_frame, text="🧠 Signals")
+
+        self.signal_dashboard = SignalDashboard(signals_frame)
+        self.signal_dashboard.pack(fill="both", expand=True)
+
+    def create_panel_layout(self, parent):
+        """Create three-panel layout for larger screens"""
+        scale = ResponsiveHelper.get_font_scale()
+        panel_width = int(280 * scale) if scale < 1.0 else int(320 * scale)
+
+        # Left Panel - Controls
+        left_panel = tk.Frame(parent, bg="#0d1117", width=panel_width)
+        left_panel.pack(side="left", fill="y", padx=(0, 10))
+        left_panel.pack_propagate(False)
+
+        self.create_control_panel(left_panel)
+
+        # Center Panel - Portfolio
+        center_panel = tk.Frame(parent, bg="#0d1117")
+        center_panel.pack(side="left", fill="both", expand=True, padx=(0, 10))
+
+        self.portfolio_manager = PortfolioManager(center_panel)
+        self.portfolio_manager.pack(fill="both", expand=True)
+
+        # Right Panel - Signals
+        right_panel = tk.Frame(parent, bg="#0d1117", width=panel_width)
+        right_panel.pack(side="right", fill="y")
+        right_panel.pack_propagate(False)
+
+        self.signal_dashboard = SignalDashboard(right_panel)
+        self.signal_dashboard.pack(fill="both", expand=True)
+
+    def create_control_panel(self, parent):
+        """Create control panel"""
+        scale = ResponsiveHelper.get_font_scale()
+        compact = ResponsiveHelper.should_use_compact_layout()
+        padding = ResponsiveHelper.get_padding()
+
+        # Connection Card
+        connection_card = ModernCard(parent, title="🔗 API Connection")
+        connection_card.pack(fill="x", pady=padding[1])
+
+        connection_content = tk.Frame(connection_card, bg="#2d3436")
+        connection_content.pack(fill="x", padx=padding[0], pady=padding[1])
+
+        ModernButton(connection_content, text="🔐 Setup & Connect API",
+                     command=setup_api_credentials, style="primary").pack(fill="x")
+
+        # Market Selection Card
+        market_card = ModernCard(parent, title="📊 Market Selection")
+        market_card.pack(fill="x", pady=padding[1])
+
+        market_content = tk.Frame(market_card, bg="#2d3436")
+        market_content.pack(fill="x", padx=padding[0], pady=padding[1])
+
+        symbol_font = int(10 * scale)
+        symbol_label = tk.Label(market_content, textvariable=self.symbol_var, fg="white", bg="#2d3436",
+                                font=("Segoe UI", symbol_font, "bold"))
+        symbol_label.pack()
+
+        timeframe_font = int(9 * scale)
+        timeframe_label = tk.Label(market_content, textvariable=self.timeframe_var, fg="#a0a0a0", bg="#2d3436",
+                                   font=("Segoe UI", timeframe_font))
+        timeframe_label.pack()
+
+        market_btn_frame = tk.Frame(market_content, bg="#2d3436")
+        market_btn_frame.pack(fill="x", pady=8)
+
+        if compact:
+            ModernButton(market_btn_frame, text="📈 Change Symbol", command=change_symbol,
+                         style="dark").pack(fill="x", pady=2)
+            ModernButton(market_btn_frame, text="⏱️ Change Timeframe", command=change_timeframe,
+                         style="dark").pack(fill="x", pady=2)
+        else:
+            ModernButton(market_btn_frame, text="📈 Symbol", command=change_symbol,
+                         style="dark").pack(side="left", fill="x", expand=True, padx=(0, 3))
+            ModernButton(market_btn_frame, text="⏱️ Time", command=change_timeframe,
+                         style="dark").pack(side="right", fill="x", expand=True, padx=(3, 0))
+
+        # Trading Card
+        trading_card = ModernCard(parent, title="⚡ Manual Trading")
+        trading_card.pack(fill="x", pady=padding[1])
+
+        trading_content = tk.Frame(trading_card, bg="#2d3436")
+        trading_content.pack(fill="x", padx=padding[0], pady=padding[1])
+
+        trade_btn_frame = tk.Frame(trading_content, bg="#2d3436")
+        trade_btn_frame.pack(fill="x", pady=5)
+
+        if compact:
+            ModernButton(trade_btn_frame, text="📈 LONG BUY",
+                         command=lambda: place_smart_order(SIDE_BUY, "MANUAL"),
+                         style="success").pack(fill="x", pady=2)
+            ModernButton(trade_btn_frame, text="📉 SHORT SELL",
+                         command=lambda: place_smart_order(SIDE_SELL, "MANUAL"),
+                         style="danger").pack(fill="x", pady=2)
+        else:
+            buy_btn = ModernButton(trade_btn_frame, text="📈 BUY",
+                                   command=lambda: place_smart_order(SIDE_BUY, "MANUAL"),
+                                   style="success")
+            buy_btn.pack(side="left", fill="x", expand=True, padx=(0, 3))
+
+            sell_btn = ModernButton(trade_btn_frame, text="📉 SELL",
+                                    command=lambda: place_smart_order(SIDE_SELL, "MANUAL"),
+                                    style="danger")
+            sell_btn.pack(side="right", fill="x", expand=True, padx=(3, 0))
+
+        risk_font = int(8 * scale)
+        risk_info = tk.Label(trading_content,
+                             text=f"Risk: {settings['risk_percent']}% | SL: {settings['stop_loss_percent']}% | TP: {settings['take_profit_percent']}%",
+                             fg="#74b9ff", bg="#2d3436", font=("Segoe UI", risk_font))
+        risk_info.pack(pady=(8, 0))
+
+        # AUTO TRADING CARD
+        auto_card = ModernCard(parent, title="🤖 AUTO TRADING", bg_color="#0d5016", title_color="#00ff88")
+        auto_card.pack(fill="x", pady=int(padding[1] * 2))
+
+        auto_content = tk.Frame(auto_card, bg="#0d5016")
+        auto_content.pack(fill="x", padx=padding[0], pady=int(padding[1] * 2))
+
+        auto_font = int(10 * scale) if compact else int(11 * scale)
+        self.auto_btn = tk.Button(auto_content, text="🚀 START AUTO TRADING",
+                                  command=toggle_auto_trading,
+                                  bg="#00b894", fg="white",
+                                  font=("Segoe UI", auto_font, "bold"),
+                                  relief="flat", bd=0, padx=15, pady=int(8 * scale),
+                                  cursor="hand2")
+        self.auto_btn.pack(fill="x")
+
+        def on_auto_hover(event):
+            self.auto_btn.config(bg="#00ff88")
+
+        def on_auto_leave(event):
+            self.auto_btn.config(bg="#00b894")
+
+        self.auto_btn.bind("<Enter>", on_auto_hover)
+        self.auto_btn.bind("<Leave>", on_auto_leave)
+
+        status_font = int(9 * scale) if compact else int(10 * scale)
+        auto_status_label = tk.Label(auto_content, textvariable=self.auto_status,
+                                     fg="#00ff88", bg="#0d5016", font=("Segoe UI", status_font, "bold"))
+        auto_status_label.pack(pady=(8, 0))
+
+        safety_font = int(7 * scale) if compact else int(8 * scale)
+        self.safety_info = tk.Label(auto_content,
+                                    text=f"Daily: {bot.daily_trade_count}/{bot.max_daily_trades} trades",
+                                    fg="#a0a0a0", bg="#0d5016", font=("Segoe UI", safety_font))
+        self.safety_info.pack()
+
+        # Emergency Controls Card
+        emergency_card = ModernCard(parent, title="🚨 Emergency Controls", bg_color="#4a0e0e", title_color="#ff4757")
+        emergency_card.pack(fill="x", pady=padding[1])
+
+        emergency_content = tk.Frame(emergency_card, bg="#4a0e0e")
+        emergency_content.pack(fill="x", padx=padding[0], pady=padding[1])
+
+        emergency_font = int(9 * scale) if compact else int(10 * scale)
+        emergency_main_btn = tk.Button(emergency_content, text="🚨 EMERGENCY STOP",
+                                       command=emergency_stop,
+                                       bg="#d63031", fg="white",
+                                       font=("Segoe UI", emergency_font, "bold"),
+                                       relief="raised", bd=2, padx=10, pady=int(6 * scale),
+                                       cursor="hand2")
+        emergency_main_btn.pack(fill="x", pady=(0, 5))
+
+        emergency_btn_frame = tk.Frame(emergency_content, bg="#4a0e0e")
+        emergency_btn_frame.pack(fill="x")
+
+        if compact:
+            ModernButton(emergency_btn_frame, text="❌ Close All", command=close_all_positions,
+                         style="warning").pack(fill="x", pady=2)
+            ModernButton(emergency_btn_frame, text="🚫 Cancel All", command=cancel_all_orders,
+                         style="warning").pack(fill="x", pady=2)
+        else:
+            ModernButton(emergency_btn_frame, text="❌ Close All", command=close_all_positions,
+                         style="warning").pack(side="left", fill="x", expand=True, padx=(0, 2))
+            ModernButton(emergency_btn_frame, text="🚫 Cancel All", command=cancel_all_orders,
+                         style="warning").pack(side="right", fill="x", expand=True, padx=(2, 0))
+
+        # Tools Card
+        tools_card = ModernCard(parent, title="📊 Tools")
+        tools_card.pack(fill="x", pady=padding[1])
+
+        tools_content = tk.Frame(tools_card, bg="#2d3436")
+        tools_content.pack(fill="x", padx=padding[0], pady=padding[1])
+
+        if compact:
+            ModernButton(tools_content, text="🔍 Scanner", command=show_market_scanner,
+                         style="primary").pack(fill="x", pady=2)
+            ModernButton(tools_content, text="📈 Analytics", command=show_portfolio_analysis,
+                         style="primary").pack(fill="x", pady=2)
+            ModernButton(tools_content, text="📜 History", command=show_trading_history,
+                         style="dark").pack(fill="x", pady=2)
+            ModernButton(tools_content, text="⚙️ Settings", command=open_settings,
+                         style="dark").pack(fill="x", pady=2)
+        else:
+            tools_btn_frame1 = tk.Frame(tools_content, bg="#2d3436")
+            tools_btn_frame1.pack(fill="x", pady=2)
+
+            ModernButton(tools_btn_frame1, text="🔍 Scanner", command=show_market_scanner,
+                         style="primary").pack(side="left", fill="x", expand=True, padx=(0, 2))
+            ModernButton(tools_btn_frame1, text="📈 Analytics", command=show_portfolio_analysis,
+                         style="primary").pack(side="right", fill="x", expand=True, padx=(2, 0))
+
+            tools_btn_frame2 = tk.Frame(tools_content, bg="#2d3436")
+            tools_btn_frame2.pack(fill="x", pady=2)
+
+            ModernButton(tools_btn_frame2, text="📜 History", command=show_trading_history,
+                         style="dark").pack(side="left", fill="x", expand=True, padx=(0, 2))
+            ModernButton(tools_btn_frame2, text="⚙️ Settings", command=open_settings,
+                         style="dark").pack(side="right", fill="x", expand=True, padx=(2, 0))
+
+    def create_log_section(self):
+        """Create activity log section"""
+        scale = ResponsiveHelper.get_font_scale()
+        compact = ResponsiveHelper.should_use_compact_layout()
+
+        log_height = int(80 * scale) if compact else int(120 * scale)
+
+        bottom_panel = tk.Frame(self.root, bg="#0d1117", height=log_height)
+        bottom_panel.pack(fill="x", side="bottom", padx=15, pady=(0, 15))
+        bottom_panel.pack_propagate(False)
+
+        self.log_frame = EnhancedLogFrame(bottom_panel)
+        self.log_frame.pack(fill="both", expand=True)
+
+    def create_status_bar(self):
+        """Create responsive status bar"""
+        scale = ResponsiveHelper.get_font_scale()
+        compact = ResponsiveHelper.should_use_compact_layout()
+
+        status_bar = tk.Frame(self.root, bg="#1f2937", height=int(35 * scale))
+        status_bar.pack(fill="x", side="bottom")
+        status_bar.pack_propagate(False)
+
+        status_content = tk.Frame(status_bar, bg="#1f2937")
+        status_content.pack(fill="both", expand=True, padx=20, pady=8)
+
+        status_font = int(9 * scale) if compact else int(10 * scale)
+
+        if compact:
+            tk.Label(status_content, text="🚀 Responsive Trading Bot v2.1", fg="#74b9ff", bg="#1f2937",
+                     font=("Segoe UI", status_font, "bold")).pack()
+        else:
+            tk.Label(status_content, text="🚀 Portfolio & Signal Edition v2.1 - Responsive", fg="#74b9ff", bg="#1f2937",
+                     font=("Segoe UI", status_font, "bold")).pack(side="left")
+
+            tk.Label(status_content, textvariable=self.auto_status, fg="#74b9ff", bg="#1f2937",
+                     font=("Segoe UI", status_font, "bold")).pack(side="left", padx=50)
+
+            safety_status = tk.StringVar(value=f"🚦 Daily: {bot.daily_trade_count}/{bot.max_daily_trades}")
+            tk.Label(status_content, textvariable=safety_status, fg="#ffeaa7", bg="#1f2937",
+                     font=("Segoe UI", status_font, "bold")).pack(side="right")
+
+    def setup_callbacks(self):
+        """Setup UI callbacks and event handlers"""
+        logger.ui_callback = self.update_log_ui
+
+        # Window resize handler
+        self.root.bind('<Configure>', self.on_window_resize)
+
+        # Keyboard shortcuts
+        self.root.bind('<Escape>', lambda e: emergency_stop())
+        self.root.bind('<F1>', lambda e: change_symbol())
+        self.root.bind('<F2>', lambda e: open_settings())
+        self.root.bind('<F3>', lambda e: toggle_auto_trading())
+        self.root.bind('<F4>', lambda e: show_market_scanner())
+
+    def on_window_resize(self, event):
+        """Handle window resize for responsiveness"""
+        if event.widget == self.root:
+            # Simple responsive check - recreate interface if needed
+            current_compact = ResponsiveHelper.should_use_compact_layout()
+            if hasattr(self, 'was_compact') and self.was_compact != current_compact:
+                self.recreate_interface()
+            self.was_compact = current_compact
+
+    def recreate_interface(self):
+        """Recreate interface for responsive changes"""
+        try:
+            # Clear main container
+            for widget in self.root.winfo_children():
+                if isinstance(widget, tk.Frame) and widget != self.root.winfo_children()[0]:  # Keep header
+                    widget.destroy()
+
+            # Recreate interface
+            self.create_main_content()
+            self.create_log_section()
+            self.create_status_bar()
+
+            logger.log("Interface adapted for new screen size", 'INFO')
+        except Exception as e:
+            logger.log(f"Error recreating interface: {e}", 'ERROR')
+
+    def update_log_ui(self, log_entry):
+        """Update log UI safely"""
+        try:
+            if hasattr(self, 'log_frame'):
+                self.root.after(0, lambda: self.log_frame.add_log_entry(log_entry))
+        except Exception as e:
+            print(f"Log UI update error: {e}")
 
 
-# Initialize application
-logger.log("🚀 Advanced Portfolio & Signal Dashboard v2.1 initialized", 'SUCCESS')
-logger.log("Enhanced Portfolio Management and Real-time Signal Analysis Ready", 'INFO')
-logger.log("Modern interface with comprehensive trading tools", 'INFO')
-logger.log("Click 'Setup & Connect API' to begin trading", 'AUTO')
+# ===== Initialize Application =====
+def main():
+    global root, app
 
-# Start status updates
-update_status_indicators()
+    # Create root window
+    root = tk.Tk()
 
-# Keybindings
-root.bind('<F1>', lambda e: logger.log("F1 - Portfolio shortcut triggered", 'INFO'))
-root.bind('<F2>', lambda e: logger.log("F2 - Signals shortcut triggered", 'INFO'))
-root.bind('<Escape>', lambda e: emergency_stop())
+    # Create application instance
+    app = TradingApp(root)
 
-# Start the interface
-if __name__ == "__main__":
-    logger.log("Starting Portfolio & Signal Dashboard interface...", 'SUCCESS')
+    # Configure ttk styles
+    style = ttk.Style()
+    style.theme_use("clam")
+
+    # Initialize application
+    logger.log("🚀 Advanced Responsive Portfolio & Signal Dashboard v2.1 initialized", 'SUCCESS')
+    logger.log("Multi-screen adaptive interface ready", 'INFO')
+    logger.log("Responsive design supports screens from 800px to 4K displays", 'INFO')
+    logger.log("Click 'Setup & Connect API' to begin trading", 'AUTO')
+
+    # Keyboard shortcuts info
+    logger.log("Shortcuts: F1-Symbol, F2-Settings, F3-AutoTrade, F4-Scanner, ESC-Emergency", 'INFO')
+
+    # Start status updates
+    def update_status_loop():
+        try:
+            if client:
+                api_key, api_secret, testnet = config_manager.get_api_credentials()
+                env_type = "🧪 Testnet" if testnet else "🔴 Live"
+                app.connection_status.set(f"🟢 Connected ({env_type})")
+            else:
+                app.connection_status.set("🔴 Disconnected")
+
+            if auto_trading:
+                app.auto_status.set("🤖 Auto Trading ACTIVE")
+                if app.auto_btn:
+                    app.auto_btn.configure(text="🛑 STOP AUTO TRADING")
+            else:
+                app.auto_status.set("👤 Manual Mode")
+                if app.auto_btn:
+                    app.auto_btn.configure(text="🚀 START AUTO TRADING")
+
+            if app.safety_info:
+                app.safety_info.config(text=f"Daily: {bot.daily_trade_count}/{bot.max_daily_trades} trades")
+
+            root.after(2000, update_status_loop)
+        except:
+            root.after(2000, update_status_loop)
+
+    # Start status updates
+    root.after(1000, update_status_loop)
+
+    # Start the interface
+    logger.log("Starting Responsive Portfolio & Signal Dashboard interface...", 'SUCCESS')
     root.mainloop()
+
+
+# ===== Run Application =====
+if __name__ == "__main__":
+    main()
