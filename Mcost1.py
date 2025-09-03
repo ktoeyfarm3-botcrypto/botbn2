@@ -1,29 +1,14 @@
 import pandas as pd
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext, filedialog
+from tkinter import ttk, messagebox, scrolledtext
 import tkinter.simpledialog
 from datetime import datetime
+from openpyxl import load_workbook, Workbook
+from openpyxl.styles import numbers, Font, PatternFill, Alignment
+from openpyxl.utils.dataframe import dataframe_to_rows
 import logging
 import traceback
 import os
-
-# Enhanced imports with error handling
-try:
-    from openpyxl import load_workbook, Workbook
-    from openpyxl.styles import numbers, Font, PatternFill, Alignment
-    from openpyxl.utils.dataframe import dataframe_to_rows
-
-    OPENPYXL_AVAILABLE = True
-except ImportError as e:
-    OPENPYXL_AVAILABLE = False
-    print(f"Warning: openpyxl not available: {e}")
-
-try:
-    import xlsxwriter
-
-    XLSXWRITER_AVAILABLE = True
-except ImportError:
-    XLSXWRITER_AVAILABLE = False
 
 
 # ===== Enhanced Configuration with Built-in Data =====
@@ -93,7 +78,7 @@ class ConfigManager:
             5.85, 3.58
         ]
 
-        # ข้อมูลจริงจาก Hashira Cost.xlsx
+        # ข้อมูลจริงจาก Hashira Cost.xlsx (ครบทั้ง 68 รายการ)
         hashira_menu_names = [
             "Pork Cut Steak Set", "Tonteki Set", "Beef Cut Steak Set (Medium Rare / Well done)",
             "Buta Teriyaki Set", "Tonkatsu Set", "Tonkatsu Tamagotoji Set",
@@ -185,44 +170,37 @@ class ConfigManager:
                 logger.info("ใช้ข้อมูลตัวอย่างต่อไป")
 
     def save_base_cost_file(self):
-        """บันทึกไฟล์ Base Cost.xlsx - แก้ไขแล้ว"""
-        if not OPENPYXL_AVAILABLE:
-            logger.error("openpyxl not available for saving")
-            return False
-
+        """บันทึกไฟล์ Base Cost.xlsx"""
         try:
             wb = Workbook()
             # ลบ sheet default
-            if wb.worksheets:
-                wb.remove(wb.active)
+            wb.remove(wb.active)
 
             # สร้าง Hashira Cost sheet
-            if self.base_files.get('hashira') is not None:
+            if self.base_files['hashira'] is not None:
                 ws_hashira = wb.create_sheet("Hashira Cost")
                 df_hashira = self.base_files['hashira'].reset_index()
 
-                # เขียนข้อมูลลง worksheet
-                for r_idx, r in enumerate(dataframe_to_rows(df_hashira, index=False, header=True)):
-                    for c_idx, value in enumerate(r):
-                        cell = ws_hashira.cell(row=r_idx + 1, column=c_idx + 1, value=value)
-                        # Format header
-                        if r_idx == 0:
-                            cell.font = Font(bold=True)
-                            cell.fill = PatternFill(start_color="E6F3FF", end_color="E6F3FF", fill_type="solid")
+                for r in dataframe_to_rows(df_hashira, index=False, header=True):
+                    ws_hashira.append(r)
+
+                # จัดรูปแบบ header
+                for cell in ws_hashira[1]:
+                    cell.font = Font(bold=True)
+                    cell.fill = PatternFill(start_color="E6F3FF", end_color="E6F3FF", fill_type="solid")
 
             # สร้าง Hamada Cost sheet
-            if self.base_files.get('hamada') is not None:
+            if self.base_files['hamada'] is not None:
                 ws_hamada = wb.create_sheet("Hamada Cost")
                 df_hamada = self.base_files['hamada'].reset_index()
 
-                # เขียนข้อมูลลง worksheet
-                for r_idx, r in enumerate(dataframe_to_rows(df_hamada, index=False, header=True)):
-                    for c_idx, value in enumerate(r):
-                        cell = ws_hamada.cell(row=r_idx + 1, column=c_idx + 1, value=value)
-                        # Format header
-                        if r_idx == 0:
-                            cell.font = Font(bold=True)
-                            cell.fill = PatternFill(start_color="E6FFE6", end_color="E6FFE6", fill_type="solid")
+                for r in dataframe_to_rows(df_hamada, index=False, header=True):
+                    ws_hamada.append(r)
+
+                # จัดรูปแบบ header
+                for cell in ws_hamada[1]:
+                    cell.font = Font(bold=True)
+                    cell.fill = PatternFill(start_color="E6FFE6", end_color="E6FFE6", fill_type="solid")
 
             # ปรับความกว้างคอลัมน์
             for ws in wb.worksheets:
@@ -231,7 +209,7 @@ class ConfigManager:
                     column_letter = column[0].column_letter
                     for cell in column:
                         try:
-                            if cell.value and len(str(cell.value)) > max_length:
+                            if len(str(cell.value)) > max_length:
                                 max_length = len(str(cell.value))
                         except:
                             pass
@@ -336,7 +314,7 @@ class EnhancedCostCalculatorApp:
         self.root = root
         self.colors = configure_modern_style()
 
-        self.root.title("🍱 Hamada & Hashira Cost Calculator - FIXED")
+        self.root.title("🍱 Hamada & Hashira Cost Calculator - Fixed")
         self.root.geometry("1500x950")
         self.root.configure(bg=self.colors['light'])
         self.root.minsize(1300, 850)
@@ -346,6 +324,8 @@ class EnhancedCostCalculatorApp:
         self.template_file = None
         self.selected_base_type = tk.StringVar(value='hamada')
         self.df_result = None
+        self.df_import = None  # เก็บข้อมูลไฟล์ import
+        self.df_template = None  # เก็บข้อมูลไฟล์ template
         self.debug_mode = tk.BooleanVar(value=False)
 
         # ข้อมูล debug แยกตามประเภท
@@ -376,9 +356,7 @@ class EnhancedCostCalculatorApp:
                                 style='Title.TLabel')
         title_label.pack(pady=(0, 5))
 
-        # สถานะ libraries
-        libs_status = "✅ Excel Export Ready" if OPENPYXL_AVAILABLE or XLSXWRITER_AVAILABLE else "❌ Excel Libraries Missing"
-        subtitle = ttk.Label(header_frame, text=f"Enhanced Multi-Base Cost Management System - {libs_status}",
+        subtitle = ttk.Label(header_frame, text="Enhanced Multi-Base Cost Management System (Real Data Loaded)",
                              font=('Segoe UI', 11), foreground=self.colors['bg_secondary'])
         subtitle.pack()
 
@@ -471,21 +449,14 @@ class EnhancedCostCalculatorApp:
         ttk.Button(calc_frame, text="⚡ คำนวณ", command=self.calculate,
                    style='Success.TButton').pack(fill=tk.X)
 
-        # Export buttons - แก้ไขแล้ว
+        # ===== SINGLE EXPORT BUTTON =====
         export_frame = ttk.Frame(action_frame)
         export_frame.pack(fill=tk.X)
 
-        ttk.Button(export_frame, text="💾 บันทึก Excel (Auto)",
-                   command=self.export_excel_enhanced,
-                   style='Success.TButton').pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
-
-        ttk.Button(export_frame, text="🔍💾 บันทึก Debug (Auto)",
-                   command=self.export_debug_enhanced,
-                   style='Warning.TButton').pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
-
-        ttk.Button(export_frame, text="📤 Export Base (Auto)",
-                   command=self.export_base_enhanced,
-                   style='Accent.TButton').pack(side=tk.LEFT, padx=2, fill=tk.X, expand=True)
+        # ปุ่ม Export เดียวที่รวมทุกอย่าง
+        ttk.Button(export_frame, text="💾 Export ไฟล์ Excel ครบชุด (4 Sheets)",
+                   command=self.export_complete_excel,
+                   style='Success.TButton').pack(fill=tk.X, ipady=8)
 
         # ===== Content Area =====
         content_frame = ttk.Frame(main_frame, style='Card.TFrame')
@@ -655,96 +626,72 @@ class EnhancedCostCalculatorApp:
         }
 
     def load_import_file(self):
-        """โหลดไฟล์ import - แก้ไขแล้ว"""
+        """โหลดไฟล์ import"""
+        from tkinter import filedialog
+
         try:
             file_path = filedialog.askopenfilename(
                 title="เลือกไฟล์ Import",
-                filetypes=[
-                    ("Excel Files", "*.xlsx"),
-                    ("Excel Files", "*.xls"),
-                    ("All Files", "*.*")
-                ]
+                filetypes=[("Excel Files", "*.xlsx"), ("Excel Files", "*.xls")]
             )
 
             if not file_path:
                 return
 
-            # ตรวจสอบไฟล์
-            if not os.path.exists(file_path):
-                messagebox.showerror("Error", "ไฟล์ที่เลือกไม่พบ")
-                return
-
+            # โหลดและเก็บข้อมูลไฟล์
+            self.df_import = pd.read_excel(file_path)
             self.import_file = file_path
+
             self.import_status_label.config(
-                text=f"📂 Import: {os.path.basename(file_path)}",
+                text=f"📂 Import: {os.path.basename(file_path)} ({len(self.df_import)} แถว)",
                 foreground=self.colors['success']
             )
 
             self.debug_log(f"เลือกไฟล์ Import: {file_path}")
-            self._preview_file(file_path, "Import")
+            self._preview_file(self.df_import, "Import")
 
         except Exception as e:
-            error_msg = f"Error เลือกไฟล์: {str(e)}"
-            self.debug_log(error_msg, "ERROR")
-            messagebox.showerror("Error", error_msg)
+            self.debug_log(f"Error เลือกไฟล์: {e}", "ERROR")
+            messagebox.showerror("Error", f"ไม่สามารถเลือกไฟล์ได้: {str(e)}")
 
     def load_template_file(self):
-        """โหลดไฟล์ template - แก้ไขแล้ว"""
+        """โหลดไฟล์ template"""
+        from tkinter import filedialog
+
         try:
             file_path = filedialog.askopenfilename(
                 title="เลือกไฟล์ Template",
-                filetypes=[
-                    ("Excel Files", "*.xlsx"),
-                    ("Excel Files", "*.xls"),
-                    ("All Files", "*.*")
-                ]
+                filetypes=[("Excel Files", "*.xlsx"), ("Excel Files", "*.xls")]
             )
 
             if not file_path:
                 return
 
-            if not os.path.exists(file_path):
-                messagebox.showerror("Error", "ไฟล์ที่เลือกไม่พบ")
-                return
-
+            # โหลดและเก็บข้อมูลไฟล์ template
+            self.df_template = pd.read_excel(file_path)
             self.template_file = file_path
+
             self.template_status_label.config(
-                text=f"📄 Template: {os.path.basename(file_path)}",
+                text=f"📄 Template: {os.path.basename(file_path)} ({len(self.df_template)} แถว)",
                 foreground=self.colors['success']
             )
 
             self.debug_log(f"เลือกไฟล์ Template: {file_path}")
-            self._preview_file(file_path, "Template")
+            self._preview_file(self.df_template, "Template")
 
         except Exception as e:
-            error_msg = f"Error เลือกไฟล์: {str(e)}"
-            self.debug_log(error_msg, "ERROR")
-            messagebox.showerror("Error", error_msg)
+            self.debug_log(f"Error เลือกไฟล์ Template: {e}", "ERROR")
+            messagebox.showerror("Error", f"ไม่สามารถเลือกไฟล์ได้: {str(e)}")
 
-    def _preview_file(self, file_path, file_type):
-        """แสดงตัวอย่างข้อมูลในไฟล์ - แก้ไขแล้ว"""
+    def _preview_file(self, df_data, file_type):
+        """แสดงตัวอย่างข้อมูลในไฟล์"""
         try:
-            # ตรวจสอบไฟล์ก่อนอ่าน
-            if not os.path.exists(file_path):
-                self.debug_log(f"ไฟล์ไม่พบ: {file_path}", "ERROR")
-                return
-
-            df_preview = pd.read_excel(file_path, nrows=10)  # อ่านแค่ 10 แถวแรก
-            self.debug_log(f"ไฟล์ {file_type} มี {len(df_preview)} แถว (preview), {len(df_preview.columns)} คอลัมน์")
-            self.debug_log(f"คอลัมน์: {df_preview.columns.tolist()}")
-
-            # ตรวจสอบคอลัมน์ที่จำเป็น
-            required_columns = ["MENU NAME", "Qty"]
-            missing_columns = [col for col in required_columns if col not in df_preview.columns]
-
-            if missing_columns:
-                self.debug_log(f"⚠️ คอลัมน์ที่หายไป: {missing_columns}", "WARNING")
-            else:
-                self.debug_log("✅ คอลัมน์ครบถ้วน")
+            self.debug_log(f"ไฟล์ {file_type} มี {len(df_data)} แถว, {len(df_data.columns)} คอลัมน์")
+            self.debug_log(f"คอลัมน์: {df_data.columns.tolist()}")
 
             # แสดงตัวอย่างข้อมูล
             self.debug_log(f"ตัวอย่างข้อมูล {file_type} 5 แถวแรก:")
-            for i, row in df_preview.head(5).iterrows():
+            for i, (idx, row) in enumerate(df_data.head(5).iterrows()):
                 menu = row.get("MENU NAME", "N/A")
                 qty = row.get("Qty", "N/A")
                 self.debug_log(f"  แถว {i + 1}: {menu} = {qty}")
@@ -774,57 +721,41 @@ class EnhancedCostCalculatorApp:
                 self.debug_log(f"  สูงสุด: {cost_stats['max']:.2f} บาท")
                 self.debug_log(f"  เฉลี่ย: {cost_stats['mean']:.2f} บาท")
                 self.debug_log(f"  จำนวนรายการ: {int(cost_stats['count'])}")
-
-            # แสดงตัวอย่างเมนู 10 รายการแรก
-            self.debug_log(f"ตัวอย่างเมนู 10 รายการแรก:")
-            for i, (menu_name, row) in enumerate(df_base.head(10).iterrows()):
-                cost = row.get('Material Cost', 'N/A')
-                self.debug_log(f"  {i + 1}. {menu_name}: {cost} บาท")
-
         except Exception as e:
             self.debug_log(f"Error คำนวณสถิติ: {str(e)}", "ERROR")
 
     def calculate(self):
-        """คำนวณต้นทุน - แก้ไขแล้ว"""
+        """คำนวณต้นทุน - Enhanced Version"""
         df_base = config_manager.base_files.get(self.selected_base_type.get())
         selected_base = self.selected_base_type.get()
 
+        # Validation checks
         if df_base is None or df_base.empty:
             messagebox.showerror("Error", f"ไฟล์ {selected_base.upper()} Cost ไม่สามารถโหลดได้")
             return
 
-        if not self.import_file:
+        if self.df_import is None:
             messagebox.showwarning("Warning", "กรุณาเลือกไฟล์ Import ก่อน")
-            return
-
-        if not os.path.exists(self.import_file):
-            messagebox.showerror("Error", "ไฟล์ Import ที่เลือกไม่พบ")
             return
 
         self.debug_log(f"=== เริ่มการคำนวณด้วย {selected_base.upper()} Cost ===")
 
         try:
-            # อ่านไฟล์ import
-            self.debug_log(f"กำลังอ่านไฟล์: {self.import_file}")
-            df_import = pd.read_excel(self.import_file)
-            self.debug_log(f"อ่านไฟล์ import สำเร็จ: {len(df_import)} แถว")
-
-            # ทำความสะอาดชื่อคอลัมน์
+            # ทำความสะอาดข้อมูล
             df_base.columns = df_base.columns.str.strip()
-            df_import.columns = df_import.columns.str.strip()
-
-            self.debug_log(f"คอลัมน์ import: {df_import.columns.tolist()}")
-            self.debug_log(f"คอลัมน์ base: {df_base.columns.tolist()}")
+            self.df_import.columns = self.df_import.columns.str.strip()
 
             # ตรวจสอบคอลัมน์ที่จำเป็น
             required_columns = ["MENU NAME", "Qty"]
-            missing_columns = [col for col in required_columns if col not in df_import.columns]
+            missing_columns = [col for col in required_columns if col not in self.df_import.columns]
 
             if missing_columns:
-                error_msg = f"ไฟล์ Import ขาดคอลัมน์: {missing_columns}"
+                error_msg = f"ไฟล์ Import ไม่มีคอลัมน์: {', '.join(missing_columns)}"
                 self.debug_log(error_msg, "ERROR")
                 messagebox.showerror("Error", error_msg)
                 return
+
+            self.debug_log(f"อ่านไฟล์ import สำเร็จ: {len(self.df_import)} แถว")
 
         except Exception as e:
             error_msg = f"ไม่สามารถอ่านไฟล์ได้: {str(e)}"
@@ -832,90 +763,72 @@ class EnhancedCostCalculatorApp:
             messagebox.showerror("Error", error_msg)
             return
 
-        # เริ่มคำนวณ
+        # เริ่มการคำนวณ
         results = []
         matched_count = 0
-        not_found_count = 0
-        invalid_qty_count = 0
+        self.debug_data['not_found_menus'] = []
+        self.debug_data['matched_menus'] = []
 
-        self.debug_log("เริ่มประมวลผลข้อมูล...")
-
-        for idx, row in df_import.iterrows():
+        for idx, row in self.df_import.iterrows():
             menu = row.get("MENU NAME")
             qty = row.get("Qty", 0)
 
-            # ข้าม row ที่ไม่มีชื่อเมนู
             if pd.isna(menu) or menu == "":
                 continue
 
-            # แปลง quantity เป็นตัวเลข
             try:
-                if pd.isna(qty) or qty == "" or qty == 0:
-                    qty = 0
-                    invalid_qty_count += 1
-                    if self.debug_mode.get():
-                        self.debug_log(f"⚠️ Qty = 0 สำหรับ: {menu}", "WARNING")
-                else:
-                    qty = float(qty)
-            except (ValueError, TypeError):
+                qty = float(qty) if not pd.isna(qty) else 0
+            except:
                 qty = 0
-                invalid_qty_count += 1
-                if self.debug_mode.get():
-                    self.debug_log(f"⚠️ Qty ไม่ถูกต้องสำหรับ: {menu}", "WARNING")
+                self.debug_data['invalid_qty_items'].append(menu)
 
-            # หาเมนูใน base cost
             if menu in df_base.index:
                 try:
                     material_cost = df_base.at[menu, "Material Cost"]
-
-                    # ตรวจสอบและแปลง material cost
                     if pd.isna(material_cost):
                         material_cost = 0
-                        self.debug_log(f"⚠️ Material Cost = NaN สำหรับ: {menu}", "WARNING")
                     else:
-                        try:
-                            material_cost = float(material_cost)
-                        except (ValueError, TypeError):
-                            material_cost = 0
-                            self.debug_log(f"⚠️ Material Cost ไม่ถูกต้องสำหรับ: {menu}", "WARNING")
+                        material_cost = float(material_cost)
 
                     total_cost = qty * material_cost
                     results.append([menu, qty, material_cost, total_cost])
                     matched_count += 1
+                    self.debug_data['matched_menus'].append(menu)
 
                     if self.debug_mode.get():
                         self.debug_log(f"✓ พบเมนู: {menu} = {material_cost:.2f} x {qty} = {total_cost:.2f}")
 
                 except Exception as e:
                     self.debug_log(f"Error คำนวณ {menu}: {str(e)}", "ERROR")
+                    self.debug_data['nan_cost_items'].append(menu)
             else:
-                not_found_count += 1
+                self.debug_data['not_found_menus'].append(menu)
                 if self.debug_mode.get():
                     self.debug_log(f"❌ ไม่พบเมนู: {menu}", "WARNING")
 
-        # รายงานผลการประมวลผล
-        self.debug_log(f"=== สรุปผลการประมวลผล ===")
-        self.debug_log(f"✅ พบเมนู: {matched_count}")
-        self.debug_log(f"❌ ไม่พบเมนู: {not_found_count}")
-        self.debug_log(f"⚠️ Qty ไม่ถูกต้อง: {invalid_qty_count}")
-
         # สร้าง DataFrame ผลลัพธ์
-        if not results:
+        self.df_result = pd.DataFrame(results, columns=["MENU NAME", "Qty", "Material Cost", "Total Cost"])
+
+        if self.df_result.empty:
             error_msg = f"ไม่มีชื่อเมนูที่ตรงกับ {selected_base.upper()} Cost"
             self.debug_log(error_msg, "WARNING")
             messagebox.showwarning("ไม่พบข้อมูล", error_msg)
             return
 
-        self.df_result = pd.DataFrame(results, columns=["MENU NAME", "Qty", "Material Cost", "Total Cost"])
-
         # คำนวณ Grand Total
         grand_total = self.df_result["Total Cost"].sum()
-        self.debug_log(f"💰 Grand Total: {grand_total:,.2f} บาท")
-
-        # เพิ่ม Grand Total row
-        grand_total_row = pd.DataFrame([["== GRAND TOTAL ==", "", "", grand_total]],
+        grand_total_row = pd.DataFrame([["Grand Total", "", "", grand_total]],
                                        columns=["MENU NAME", "Qty", "Material Cost", "Total Cost"])
         self.df_result = pd.concat([self.df_result, grand_total_row], ignore_index=True)
+
+        # บันทึก summary ใน debug_data
+        self.debug_data['processing_summary'] = {
+            'total_import_items': len(self.df_import),
+            'matched_items': matched_count,
+            'not_found_items': len(self.debug_data['not_found_menus']),
+            'grand_total': grand_total,
+            'base_type_used': selected_base.upper()
+        }
 
         # แสดงผล
         self._update_result_table()
@@ -927,46 +840,20 @@ class EnhancedCostCalculatorApp:
 
     def _update_result_table(self):
         """อัพเดทตารางผลลัพธ์"""
-        # เคลียร์ข้อมูลเก่า
         for row in self.tree.get_children():
             self.tree.delete(row)
 
-        if self.df_result is None or self.df_result.empty:
-            return
-
-        # เพิ่มข้อมูลใหม่
         for _, r in self.df_result.iterrows():
-            try:
-                # จัดรูปแบบการแสดงผล
-                menu_name = r["MENU NAME"]
+            qty_display = int(r["Qty"]) if r["Qty"] != "" else ""
+            cost_display = f"{r['Material Cost']:.2f}" if r["Material Cost"] != "" else ""
+            total_display = f"{r['Total Cost']:.2f}" if r["Total Cost"] != "" else ""
 
-                if r["Qty"] == "" or pd.isna(r["Qty"]):
-                    qty_display = ""
-                else:
-                    qty_display = f"{float(r['Qty']):g}"  # ใช้ :g เพื่อลบ .0 ที่ไม่จำเป็น
+            tags = ("grand_total",) if r["MENU NAME"] == "Grand Total" else ()
 
-                if r["Material Cost"] == "" or pd.isna(r["Material Cost"]):
-                    cost_display = ""
-                else:
-                    cost_display = f"{float(r['Material Cost']):.2f}"
+            self.tree.insert("", tk.END,
+                             values=(r["MENU NAME"], qty_display, cost_display, total_display),
+                             tags=tags)
 
-                if pd.isna(r["Total Cost"]):
-                    total_display = "0.00"
-                else:
-                    total_display = f"{float(r['Total Cost']):.2f}"
-
-                # กำหนด tags
-                tags = ()
-                if "GRAND TOTAL" in str(menu_name).upper():
-                    tags = ("grand_total",)
-
-                self.tree.insert("", tk.END,
-                                 values=(menu_name, qty_display, cost_display, total_display),
-                                 tags=tags)
-            except Exception as e:
-                self.debug_log(f"Error แสดงผล row: {e}", "ERROR")
-
-        # จัดรูปแบบ Grand Total
         self.tree.tag_configure("grand_total",
                                 background="#3498db",
                                 foreground="#ffffff",
@@ -977,534 +864,234 @@ class EnhancedCostCalculatorApp:
         stats_text = (f"✅ พบเมนู: {matched} | 💰 รวม: {grand_total:,.2f} บาท | 🏪 Base: {base_type.upper()}")
         self.stats_label.config(text=stats_text)
 
-    # ===== ฟังก์ชันบันทึก Excel แก้ไขใหม่ =====
-    def export_excel_enhanced(self):
-        """บันทึก Excel แบบ Enhanced - ใช้ได้แน่นอน"""
-        self.debug_log("🔄 เริ่มบันทึก Excel แบบ Enhanced...")
+    # ===== SINGLE EXPORT FUNCTION - ไฟล์เดียว 4 Sheets =====
+    def export_complete_excel(self):
+        """Export ไฟล์ Excel เดียวที่มี 4 Sheets ครบชุด"""
+        self.debug_log("🔄 เริ่ม Export ไฟล์ Excel ครบชุด...")
 
+        # ตรวจสอบข้อมูลพื้นฐาน
         if self.df_result is None or self.df_result.empty:
-            messagebox.showwarning("Warning", "กรุณาคำนวณก่อนบันทึก")
+            messagebox.showwarning("Warning", "กรุณาคำนวณก่อน Export")
             return
 
         selected_base = self.selected_base_type.get()
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"Cost_Calculation_{selected_base.upper()}_{timestamp}.xlsx"
+        filename = f"Cost_Analysis_Complete_{selected_base.upper()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
         file_path = os.path.join(os.getcwd(), filename)
 
-        self.debug_log(f"📂 กำลังบันทึกไฟล์: {filename}")
-        self.debug_log(f"📍 ตำแหน่งไฟล์: {file_path}")
-
         try:
-            # วิธีที่ 1: ใช้ openpyxl (ถ้ามี)
-            if OPENPYXL_AVAILABLE:
-                self.debug_log("ใช้ openpyxl engine")
-                success = self._export_with_openpyxl(file_path, selected_base)
-                if success:
-                    self._show_export_success_dialog(filename, file_path, selected_base)
-                    return
+            self.debug_log(f"📂 สร้างไฟล์ Excel ที่: {file_path}")
 
-            # วิธีที่ 2: ใช้ xlsxwriter (ถ้ามี)
-            if XLSXWRITER_AVAILABLE:
-                self.debug_log("ใช้ xlsxwriter engine")
-                success = self._export_with_xlsxwriter(file_path, selected_base)
-                if success:
-                    self._show_export_success_dialog(filename, file_path, selected_base)
-                    return
-
-            # วิธีที่ 3: ใช้ pandas default
-            self.debug_log("ใช้ pandas default engine")
-            success = self._export_with_pandas(file_path, selected_base)
-            if success:
-                self._show_export_success_dialog(filename, file_path, selected_base)
-                return
-
-            # ถ้าทุกวิธีล้มเหลว
-            raise Exception("ทุกวิธีการ export ล้มเหลว")
-
-        except Exception as e:
-            error_msg = f"Error บันทึกไฟล์: {str(e)}"
-            self.debug_log(error_msg, "ERROR")
-            self.debug_log(f"Traceback: {traceback.format_exc()}", "ERROR")
-
-            # แสดง error dialog พร้อมคำแนะนำ
-            error_dialog_msg = f"""❌ ไม่สามารถบันทึกไฟล์ Excel ได้
-
-🔍 สาเหตุที่เป็นไปได้:
-• ไฟล์ถูกเปิดอยู่ในโปรแกรมอื่น
-• ไม่มีสิทธิ์เขียนไฟล์ในโฟลเดอร์นี้
-• Library สำหรับ Excel ขาดหายไป
-
-💡 วิธีแก้ไข:
-1. ปิดไฟล์ Excel ที่อาจเปิดอยู่
-2. เรียกใช้โปรแกรมในฐานะ Administrator
-3. ลองบันทึกในโฟลเดอร์อื่น
-
-🛠️ Error Details:
-{str(e)}"""
-
-            messagebox.showerror("Export Error", error_dialog_msg)
-
-    def _export_with_openpyxl(self, file_path, selected_base):
-        """บันทึกด้วย openpyxl"""
-        try:
-            # ตรวจสอบและทำความสะอาดข้อมูล
-            df_clean = self.df_result.copy()
-
-            # แปลงข้อมูลให้เป็นรูปแบบที่ถูกต้อง
-            for col in ['Qty', 'Material Cost', 'Total Cost']:
-                if col in df_clean.columns:
-                    df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce').fillna(0)
-
+            # สร้าง Excel Workbook
             wb = Workbook()
-            ws = wb.active
-            ws.title = "Cost Calculation"
+            wb.remove(wb.active)  # ลบ sheet default
 
-            # เขียน header
-            headers = df_clean.columns.tolist()
-            for col_num, header in enumerate(headers, 1):
-                cell = ws.cell(row=1, column=col_num, value=header)
-                cell.font = Font(bold=True)
-                cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
+            sheets_created = 0
 
-            # เขียนข้อมูล
-            for row_num, (_, row) in enumerate(df_clean.iterrows(), 2):
-                for col_num, value in enumerate(row, 1):
-                    cell = ws.cell(row=row_num, column=col_num, value=value)
+            # ===== Sheet 1: ผลลัพธ์ =====
+            if self.df_result is not None:
+                ws_result = wb.create_sheet("1.ผลลัพธ์")
 
-                    # ไฮไลท์ Grand Total
-                    if "GRAND TOTAL" in str(row.iloc[0]).upper():
-                        cell.font = Font(bold=True)
-                        cell.fill = PatternFill(start_color="FFFF99", end_color="FFFF99", fill_type="solid")
+                # เพิ่มหัวข้อและข้อมูลสรุป
+                ws_result.append(["📊 Cost Calculation Results"])
+                ws_result.append([])
+                ws_result.append([f"🏪 Base Cost Used: {selected_base.upper()}"])
+                ws_result.append([f"📅 Calculation Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
+                ws_result.append([f"📋 Total Items: {len(self.df_result) - 1}"])  # ลบ Grand Total
+                ws_result.append([])
 
-            # ปรับความกว้างคอลัมน์
-            for column in ws.columns:
-                max_length = 0
-                column_letter = column[0].column_letter
-
-                for cell in column:
-                    try:
-                        if cell.value and len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-
-                adjusted_width = min(max_length + 2, 50)
-                ws.column_dimensions[column_letter].width = adjusted_width
-
-            wb.save(file_path)
-            self.debug_log(f"✅ บันทึกด้วย openpyxl สำเร็จ")
-            return True
-
-        except Exception as e:
-            self.debug_log(f"Error openpyxl export: {str(e)}", "ERROR")
-            return False
-
-    def _export_with_xlsxwriter(self, file_path, selected_base):
-        """บันทึกด้วย xlsxwriter"""
-        try:
-            # ตรวจสอบและทำความสะอาดข้อมูล
-            df_clean = self.df_result.copy()
-
-            # แปลงข้อมูลให้เป็นรูปแบบที่ถูกต้อง
-            for col in ['Qty', 'Material Cost', 'Total Cost']:
-                if col in df_clean.columns:
-                    df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce').fillna(0)
-
-            with pd.ExcelWriter(file_path, engine='xlsxwriter') as writer:
-                df_clean.to_excel(writer, sheet_name='Cost Calculation', index=False)
+                # เพิ่มตาราง results
+                for r in dataframe_to_rows(self.df_result, index=False, header=True):
+                    ws_result.append(r)
 
                 # จัดรูปแบบ
-                workbook = writer.book
-                worksheet = writer.sheets['Cost Calculation']
+                # Header ใหญ่
+                ws_result['A1'].font = Font(bold=True, size=14, color="FFFFFF")
+                ws_result['A1'].fill = PatternFill(start_color="3498DB", end_color="3498DB", fill_type="solid")
 
-                # Header format
-                header_format = workbook.add_format({
-                    'bold': True,
-                    'bg_color': '#CCCCCC',
-                    'border': 1
-                })
+                # Table headers
+                header_row = 7
+                for cell in ws_result[header_row]:
+                    cell.font = Font(bold=True, color="FFFFFF")
+                    cell.fill = PatternFill(start_color="2ECC71", end_color="2ECC71", fill_type="solid")
+                    cell.alignment = Alignment(horizontal="center")
 
-                # Grand total format
-                grand_total_format = workbook.add_format({
-                    'bold': True,
-                    'bg_color': '#FFFF99',
-                    'border': 1
-                })
+                # ไฮไลท์ Grand Total
+                for row in range(header_row + 1, ws_result.max_row + 1):
+                    if ws_result[f'A{row}'].value == "Grand Total":
+                        for col in range(1, 5):
+                            cell = ws_result.cell(row=row, column=col)
+                            cell.font = Font(bold=True, color="FFFFFF")
+                            cell.fill = PatternFill(start_color="E74C3C", end_color="E74C3C", fill_type="solid")
 
-                # Apply header format
-                for col_num, header in enumerate(df_clean.columns):
-                    worksheet.write(0, col_num, header, header_format)
+                sheets_created += 1
+                self.debug_log(f"✅ Sheet 1: ผลลัพธ์ ({len(self.df_result)} รายการ)")
 
-                # Apply grand total format
-                for row_num, (_, row) in enumerate(df_clean.iterrows(), 1):
-                    if "GRAND TOTAL" in str(row.iloc[0]).upper():
-                        for col_num, value in enumerate(row):
-                            worksheet.write(row_num, col_num, value, grand_total_format)
+            # ===== Sheet 2: Base Cost ที่เลือกใช้ =====
+            df_base = config_manager.base_files.get(selected_base)
+            if df_base is not None:
+                ws_base = wb.create_sheet(f"2.Base Cost ({selected_base.upper()})")
+                df_base_export = df_base.reset_index()
 
-                # Auto-fit columns
-                for col_num, header in enumerate(df_clean.columns):
-                    worksheet.set_column(col_num, col_num, 15)
+                # เพิ่มหัวข้อ
+                ws_base.append([f"🏪 {selected_base.upper()} Base Cost Data"])
+                ws_base.append([])
+                ws_base.append([f"📅 Export Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
+                ws_base.append([f"📋 Total Menus: {len(df_base_export)}"])
+                ws_base.append([])
 
-            self.debug_log(f"✅ บันทึกด้วย xlsxwriter สำเร็จ")
-            return True
+                # เพิ่มข้อมูล
+                for r in dataframe_to_rows(df_base_export, index=False, header=True):
+                    ws_base.append(r)
 
-        except Exception as e:
-            self.debug_log(f"Error xlsxwriter export: {str(e)}", "ERROR")
-            return False
+                # จัดรูปแบบ
+                ws_base['A1'].font = Font(bold=True, size=14, color="FFFFFF")
+                if selected_base == 'hashira':
+                    ws_base['A1'].fill = PatternFill(start_color="9B59B6", end_color="9B59B6", fill_type="solid")
+                else:
+                    ws_base['A1'].fill = PatternFill(start_color="E67E22", end_color="E67E22", fill_type="solid")
 
-    def _export_with_pandas(self, file_path, selected_base):
-        """บันทึกด้วย pandas default"""
-        try:
-            # ตรวจสอบและทำความสะอาดข้อมูล
-            df_clean = self.df_result.copy()
+                # Table headers
+                header_row = 6
+                for cell in ws_base[header_row]:
+                    cell.font = Font(bold=True, color="FFFFFF")
+                    cell.fill = PatternFill(start_color="34495E", end_color="34495E", fill_type="solid")
 
-            # แปลงข้อมูลให้เป็นรูปแบบที่ถูกต้อง
-            for col in ['Qty', 'Material Cost', 'Total Cost']:
-                if col in df_clean.columns:
-                    df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce').fillna(0)
+                sheets_created += 1
+                self.debug_log(f"✅ Sheet 2: Base Cost {selected_base.upper()} ({len(df_base_export)} เมนู)")
 
-            # บันทึกแบบ basic
-            df_clean.to_excel(file_path, index=False, sheet_name='Cost Calculation')
+            # ===== Sheet 3: ไฟล์ Import =====
+            if self.df_import is not None:
+                ws_import = wb.create_sheet("3.Import File")
 
-            self.debug_log(f"✅ บันทึกด้วย pandas default สำเร็จ")
-            return True
+                # เพิ่มหัวข้อ
+                ws_import.append(["📁 Import File Data"])
+                ws_import.append([])
+                ws_import.append([f"📂 File: {os.path.basename(self.import_file) if self.import_file else 'N/A'}"])
+                ws_import.append([f"📅 Import Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
+                ws_import.append([f"📋 Total Rows: {len(self.df_import)}"])
+                ws_import.append([])
 
-        except Exception as e:
-            self.debug_log(f"Error pandas export: {str(e)}", "ERROR")
-            return False
+                # เพิ่มข้อมูล
+                for r in dataframe_to_rows(self.df_import, index=False, header=True):
+                    ws_import.append(r)
 
-    def _show_export_success_dialog(self, filename, file_path, selected_base):
-        """แสดง dialog สำเร็จ"""
-        record_count = len(self.df_result) if self.df_result is not None else 0
-        grand_total = self.df_result[
-            "Total Cost"].sum() if self.df_result is not None and not self.df_result.empty else 0
+                # จัดรูปแบบ
+                ws_import['A1'].font = Font(bold=True, size=14, color="FFFFFF")
+                ws_import['A1'].fill = PatternFill(start_color="16A085", end_color="16A085", fill_type="solid")
 
-        success_msg = f"""✅ บันทึกไฟล์เรียบร้อย!
+                # Table headers
+                header_row = 7
+                for cell in ws_import[header_row]:
+                    cell.font = Font(bold=True, color="FFFFFF")
+                    cell.fill = PatternFill(start_color="1ABC9C", end_color="1ABC9C", fill_type="solid")
+
+                sheets_created += 1
+                self.debug_log(f"✅ Sheet 3: Import File ({len(self.df_import)} แถว)")
+
+            # ===== Sheet 4: Template File =====
+            if self.df_template is not None:
+                ws_template = wb.create_sheet("4.Template File")
+
+                # เพิ่มหัวข้อ
+                ws_template.append(["📄 Template File Data"])
+                ws_template.append([])
+                ws_template.append([f"📂 File: {os.path.basename(self.template_file) if self.template_file else 'N/A'}"])
+                ws_template.append([f"📅 Import Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
+                ws_template.append([f"📋 Total Rows: {len(self.df_template)}"])
+                ws_template.append([])
+
+                # เพิ่มข้อมูล
+                for r in dataframe_to_rows(self.df_template, index=False, header=True):
+                    ws_template.append(r)
+
+                # จัดรูปแบบ
+                ws_template['A1'].font = Font(bold=True, size=14, color="FFFFFF")
+                ws_template['A1'].fill = PatternFill(start_color="F39C12", end_color="F39C12", fill_type="solid")
+
+                # Table headers
+                header_row = 7
+                for cell in ws_template[header_row]:
+                    cell.font = Font(bold=True, color="FFFFFF")
+                    cell.fill = PatternFill(start_color="E67E22", end_color="E67E22", fill_type="solid")
+
+                sheets_created += 1
+                self.debug_log(f"✅ Sheet 4: Template File ({len(self.df_template)} แถว)")
+            else:
+                # สร้าง sheet ว่างถ้าไม่มี template
+                ws_template = wb.create_sheet("4.Template File")
+                ws_template.append(["📄 Template File Data"])
+                ws_template.append([])
+                ws_template.append(["ℹ️ No template file imported"])
+
+                ws_template['A1'].font = Font(bold=True, size=14, color="FFFFFF")
+                ws_template['A1'].fill = PatternFill(start_color="95A5A6", end_color="95A5A6", fill_type="solid")
+
+                sheets_created += 1
+                self.debug_log("✅ Sheet 4: Template File (ไม่มีข้อมูล)")
+
+            # ปรับความกว้างคอลัมน์ทุก sheet
+            for ws in wb.worksheets:
+                for column in ws.columns:
+                    max_length = 0
+                    column_letter = column[0].column_letter
+                    for cell in column:
+                        try:
+                            if len(str(cell.value)) > max_length:
+                                max_length = len(str(cell.value))
+                        except:
+                            pass
+                    adjusted_width = min(max_length + 2, 50)
+                    ws.column_dimensions[column_letter].width = adjusted_width
+
+            # บันทึกไฟล์
+            wb.save(file_path)
+
+            # สรุปผลการ Export
+            summary_msg = f"""✅ Export ไฟล์ Excel สำเร็จ!
 
 📁 ชื่อไฟล์: {filename}
 📍 ตำแหน่ง: {file_path}
-📊 จำนวนข้อมูล: {record_count} รายการ
-💰 ยอดรวม: {grand_total:,.2f} บาท
-🏪 ใช้ Base: {selected_base.upper()} Cost
+📊 จำนวน Sheets: {sheets_created}
+
+📋 รายการ Sheets:
+1. ผลลัพธ์ ({len(self.df_result)} รายการ)
+2. Base Cost ({selected_base.upper()}) ({len(df_base)} เมนู)  
+3. Import File ({len(self.df_import) if self.df_import is not None else 0} แถว)
+4. Template File ({len(self.df_template) if self.df_template is not None else 0} แถว)
+
+💰 Grand Total: {self.debug_data['processing_summary']['grand_total']:,.2f} บาท
+🏪 Base: {selected_base.upper()}
 
 ✅ ไฟล์พร้อมใช้งาน"""
 
-        messagebox.showinfo("สำเร็จ!", success_msg)
+            self.debug_log(f"✅ Export สำเร็จ: {filename}")
+            self.debug_log(f"📊 Sheets: {sheets_created}")
+            self.debug_log(f"💰 Grand Total: {self.debug_data['processing_summary']['grand_total']:,.2f} บาท")
 
-    def export_debug_enhanced(self):
-        """บันทึก Debug แบบ Enhanced"""
-        self.debug_log("🔄 เริ่มบันทึก Debug แบบ Enhanced...")
-
-        if self.df_result is None or self.df_result.empty:
-            messagebox.showwarning("Warning", "กรุณาคำนวณก่อนบันทึก Debug")
-            return
-
-        selected_base = self.selected_base_type.get()
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"Cost_Debug_{selected_base.upper()}_{timestamp}.xlsx"
-        file_path = os.path.join(os.getcwd(), filename)
-
-        self.debug_log(f"📂 บันทึกไฟล์ Debug ที่: {file_path}")
-
-        try:
-            if OPENPYXL_AVAILABLE:
-                # ใช้ openpyxl สำหรับ debug
-                wb = Workbook()
-
-                # ลบ default sheet
-                if wb.worksheets:
-                    wb.remove(wb.active)
-
-                # Sheet 1: ผลลัพธ์
-                ws_main = wb.create_sheet("ผลลัพธ์")
-                df_clean = self.df_result.copy()
-
-                # เขียนข้อมูลผลลัพธ์
-                for r_idx, r in enumerate(dataframe_to_rows(df_clean, index=False, header=True)):
-                    for c_idx, value in enumerate(r):
-                        cell = ws_main.cell(row=r_idx + 1, column=c_idx + 1, value=value)
-                        if r_idx == 0:  # Header
-                            cell.font = Font(bold=True)
-                            cell.fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
-
-                # Sheet 2: Base Data ที่ใช้
-                if config_manager.base_files.get(selected_base) is not None:
-                    ws_base = wb.create_sheet(f"{selected_base.upper()} Cost")
-                    df_base = config_manager.base_files[selected_base].reset_index()
-
-                    for r_idx, r in enumerate(dataframe_to_rows(df_base, index=False, header=True)):
-                        for c_idx, value in enumerate(r):
-                            cell = ws_base.cell(row=r_idx + 1, column=c_idx + 1, value=value)
-                            if r_idx == 0:  # Header
-                                cell.font = Font(bold=True)
-                                cell.fill = PatternFill(start_color="E6F3FF", end_color="E6F3FF", fill_type="solid")
-
-                # Sheet 3: Debug Info
-                ws_debug = wb.create_sheet("Debug Info")
-                debug_info = [
-                    ["Debug Information", ""],
-                    ["Timestamp", datetime.now().strftime('%Y-%m-%d %H:%M:%S')],
-                    ["Base Type Used", selected_base.upper()],
-                    ["Total Records", len(df_clean)],
-                    ["Grand Total", f"{df_clean['Total Cost'].sum():.2f} บาท"],
-                    ["Import File", os.path.basename(self.import_file) if self.import_file else "N/A"],
-                ]
-
-                for r_idx, (key, value) in enumerate(debug_info, 1):
-                    ws_debug.cell(row=r_idx, column=1, value=key).font = Font(bold=True)
-                    ws_debug.cell(row=r_idx, column=2, value=value)
-
-                # ปรับความกว้างคอลัมน์ทุก sheet
-                for ws in wb.worksheets:
-                    for column in ws.columns:
-                        max_length = 0
-                        column_letter = column[0].column_letter
-                        for cell in column:
-                            try:
-                                if cell.value and len(str(cell.value)) > max_length:
-                                    max_length = len(str(cell.value))
-                            except:
-                                pass
-                        adjusted_width = min(max_length + 2, 60)
-                        ws.column_dimensions[column_letter].width = adjusted_width
-
-                wb.save(file_path)
-
-            else:
-                # ใช้ pandas สำหรับ debug
-                with pd.ExcelWriter(file_path, engine='openpyxl' if OPENPYXL_AVAILABLE else 'xlsxwriter') as writer:
-                    self.df_result.to_excel(writer, sheet_name='ผลลัพธ์', index=False)
-
-                    if config_manager.base_files.get(selected_base) is not None:
-                        df_base = config_manager.base_files[selected_base].reset_index()
-                        df_base.to_excel(writer, sheet_name=f'{selected_base.upper()} Cost', index=False)
-
-            self.debug_log(f"✅ บันทึก Debug สำเร็จ: {filename}")
-
-            success_msg = f"""✅ บันทึกไฟล์ Debug เรียบร้อย!
-
-📁 ชื่อไฟล์: {filename}  
-📍 ตำแหน่ง: {file_path}
-📊 Sheets: ผลลัพธ์, {selected_base.upper()} Cost, Debug Info
-🏪 Base Type: {selected_base.upper()}
-
-✅ ไฟล์พร้อมใช้งาน"""
-
-            messagebox.showinfo("สำเร็จ!", success_msg)
-            return True
+            messagebox.showinfo("Export สำเร็จ!", summary_msg)
 
         except Exception as e:
-            self.debug_log(f"Error debug export: {str(e)}", "ERROR")
-            return False
-
-    def export_base_enhanced(self):
-        """Export Base Cost แบบ Enhanced"""
-        self.debug_log("🔄 เริ่ม Export Base Cost แบบ Enhanced...")
-
-        if not any(config_manager.base_files.values()):
-            messagebox.showerror("Error", "ไม่มีข้อมูล Base Cost ให้ export")
-            return
-
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"Base_Cost_Export_{timestamp}.xlsx"
-        file_path = os.path.join(os.getcwd(), filename)
-
-        self.debug_log(f"📂 Export Base ที่: {file_path}")
-
-        try:
-            if OPENPYXL_AVAILABLE:
-                wb = Workbook()
-                if wb.worksheets:
-                    wb.remove(wb.active)
-
-                sheets_created = 0
-
-                # Export Hashira Cost
-                if config_manager.base_files.get('hashira') is not None:
-                    ws_hashira = wb.create_sheet("Hashira Cost")
-                    df_hashira = config_manager.base_files['hashira'].reset_index()
-
-                    for r_idx, r in enumerate(dataframe_to_rows(df_hashira, index=False, header=True)):
-                        for c_idx, value in enumerate(r):
-                            cell = ws_hashira.cell(row=r_idx + 1, column=c_idx + 1, value=value)
-                            if r_idx == 0:
-                                cell.font = Font(bold=True)
-                                cell.fill = PatternFill(start_color="E6F3FF", end_color="E6F3FF", fill_type="solid")
-
-                    sheets_created += 1
-                    self.debug_log(f"✅ Export Hashira: {len(df_hashira)} เมนู")
-
-                # Export Hamada Cost
-                if config_manager.base_files.get('hamada') is not None:
-                    ws_hamada = wb.create_sheet("Hamada Cost")
-                    df_hamada = config_manager.base_files['hamada'].reset_index()
-
-                    for r_idx, r in enumerate(dataframe_to_rows(df_hamada, index=False, header=True)):
-                        for c_idx, value in enumerate(r):
-                            cell = ws_hamada.cell(row=r_idx + 1, column=c_idx + 1, value=value)
-                            if r_idx == 0:
-                                cell.font = Font(bold=True)
-                                cell.fill = PatternFill(start_color="E6FFE6", end_color="E6FFE6", fill_type="solid")
-
-                    sheets_created += 1
-                    self.debug_log(f"✅ Export Hamada: {len(df_hamada)} เมนู")
-
-                # ปรับความกว้างคอลัมน์
-                for ws in wb.worksheets:
-                    for column in ws.columns:
-                        max_length = 0
-                        column_letter = column[0].column_letter
-                        for cell in column:
-                            try:
-                                if cell.value and len(str(cell.value)) > max_length:
-                                    max_length = len(str(cell.value))
-                            except:
-                                pass
-                        adjusted_width = min(max_length + 2, 60)
-                        ws.column_dimensions[column_letter].width = adjusted_width
-
-                wb.save(file_path)
-
-            else:
-                # ใช้ pandas สำหรับ export
-                with pd.ExcelWriter(file_path) as writer:
-                    if config_manager.base_files.get('hashira') is not None:
-                        df_hashira = config_manager.base_files['hashira'].reset_index()
-                        df_hashira.to_excel(writer, sheet_name='Hashira Cost', index=False)
-                        sheets_created += 1
-
-                    if config_manager.base_files.get('hamada') is not None:
-                        df_hamada = config_manager.base_files['hamada'].reset_index()
-                        df_hamada.to_excel(writer, sheet_name='Hamada Cost', index=False)
-                        sheets_created += 1
-
-            hashira_count = len(config_manager.base_files['hashira']) if config_manager.base_files.get(
-                'hashira') is not None else 0
-            hamada_count = len(config_manager.base_files['hamada']) if config_manager.base_files.get(
-                'hamada') is not None else 0
-
-            self.debug_log(f"✅ Export Base สำเร็จ: {filename}")
-
-            success_msg = f"""✅ Export ไฟล์ Base เรียบร้อย!
-
-📁 ชื่อไฟล์: {filename}
-📍 ตำแหน่ง: {file_path}  
-📊 Sheets: {sheets_created}
-🏯 Hashira: {hashira_count} เมนู
-🍜 Hamada: {hamada_count} เมนู
-
-✅ ไฟล์พร้อมใช้งาน"""
-
-            messagebox.showinfo("สำเร็จ!", success_msg)
-            return True
-
-        except Exception as e:
-            error_msg = f"Error export Base: {str(e)}"
+            error_msg = f"Error Export ไฟล์: {str(e)}"
             self.debug_log(error_msg, "ERROR")
-            messagebox.showerror("Error", error_msg)
-            return False
-
-    def check_excel_libraries(self):
-        """ตรวจสอบ Excel libraries ที่มีอยู่"""
-        self.debug_log("=== ตรวจสอบ Excel Libraries ===")
-
-        if OPENPYXL_AVAILABLE:
-            self.debug_log("✅ openpyxl: พร้อมใช้งาน")
-        else:
-            self.debug_log("❌ openpyxl: ไม่พบ")
-
-        if XLSXWRITER_AVAILABLE:
-            self.debug_log("✅ xlsxwriter: พร้อมใช้งาน")
-        else:
-            self.debug_log("❌ xlsxwriter: ไม่พบ")
-
-        try:
-            import xlwt
-            self.debug_log("✅ xlwt: พร้อมใช้งาน")
-        except ImportError:
-            self.debug_log("❌ xlwt: ไม่พบ")
-
-        if not (OPENPYXL_AVAILABLE or XLSXWRITER_AVAILABLE):
-            self.debug_log("⚠️ แนะนำให้ติดตั้ง: pip install openpyxl xlsxwriter", "WARNING")
-
-    # Alternative export methods เผื่อ main methods ไม่ได้
-    def export_excel_simple_fallback(self):
-        """วิธีบันทึก Excel แบบ fallback"""
-        if self.df_result is None or self.df_result.empty:
-            messagebox.showwarning("Warning", "กรุณาคำนวณก่อนบันทึก")
-            return
-
-        selected_base = self.selected_base_type.get()
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-
-        try:
-            # ลองบันทึกเป็น CSV ก่อน
-            csv_filename = f"Cost_Calculation_{selected_base.upper()}_{timestamp}.csv"
-            csv_path = os.path.join(os.getcwd(), csv_filename)
-
-            self.df_result.to_csv(csv_path, index=False, encoding='utf-8-sig')
-            self.debug_log(f"✅ บันทึก CSV สำเร็จ: {csv_filename}")
-
-            # ลองแปลงเป็น Excel
-            try:
-                excel_filename = f"Cost_Calculation_{selected_base.upper()}_{timestamp}.xlsx"
-                excel_path = os.path.join(os.getcwd(), excel_filename)
-
-                # อ่าน CSV แล้วบันทึกเป็น Excel
-                df_from_csv = pd.read_csv(csv_path)
-                df_from_csv.to_excel(excel_path, index=False, sheet_name='Results')
-
-                self.debug_log(f"✅ แปลง CSV เป็น Excel สำเร็จ: {excel_filename}")
-
-                # ลบไฟล์ CSV
-                os.remove(csv_path)
-
-                messagebox.showinfo("สำเร็จ!", f"""✅ บันทึกไฟล์เรียบร้อย!
-
-📁 ชื่อไฟล์: {excel_filename}
-📍 ตำแหน่ง: {excel_path}
-📊 จำนวนข้อมูล: {len(df_from_csv)} รายการ
-🏪 ใช้ Base: {selected_base.upper()} Cost
-
-✅ ไฟล์พร้อมใช้งาน""")
-
-            except Exception as e2:
-                # ถ้า Excel ไม่ได้ ให้ CSV
-                self.debug_log(f"Excel ไม่ได้ ใช้ CSV: {str(e2)}", "WARNING")
-                messagebox.showinfo("บันทึก CSV สำเร็จ", f"""📄 บันทึกเป็น CSV แทน:
-
-📁 ชื่อไฟล์: {csv_filename}
-📍 ตำแหน่ง: {csv_path}
-📊 จำนวนข้อมูล: {len(self.df_result)} รายการ
-
-💡 เปิดด้วย Excel ได้ปกติ""")
-
-        except Exception as e:
-            error_msg = f"Error บันทึกไฟล์: {str(e)}"
-            self.debug_log(error_msg, "ERROR")
+            self.debug_log(f"Traceback: {traceback.format_exc()}", "ERROR")
             messagebox.showerror("Error", error_msg)
 
 
 def main():
-    """ฟังก์ชันหลัก - แก้ไขแล้ว"""
+    """ฟังก์ชันหลัก"""
     try:
         root = tk.Tk()
         app = EnhancedCostCalculatorApp(root)
 
         app.debug_log("=== Enhanced Cost Calculator เริ่มทำงาน ===")
         app.debug_log("✅ ข้อมูลจริง Hamada (87 เมนู) และ Hashira (68 เมนู) พร้อมใช้งาน")
-        app.debug_log("💾 การบันทึกไฟล์ใช้ระบบ Enhanced (หลายวิธี)")
+        app.debug_log("💾 Export ไฟล์เดียว 4 Sheets: ผลลัพธ์ | Base Cost | Import | Template")
         app.debug_log("📂 ไฟล์จะถูกบันทึกในโฟลเดอร์เดียวกับโปรแกรม")
-
-        # ตรวจสอบ libraries
-        app.check_excel_libraries()
 
         root.mainloop()
 
     except Exception as e:
         logger.error(f"Critical error: {str(e)}")
-        print(f"Error: {str(e)}")
-        print(traceback.format_exc())
         messagebox.showerror("Error", f"เกิดข้อผิดพลาด: {str(e)}")
 
 
