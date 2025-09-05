@@ -1595,16 +1595,28 @@ def update_data():
     while running:
         try:
             if client:
-                ticker = client.futures_symbol_ticker(symbol=selected_symbol)
-                price = float(ticker['price'])
+                # เพิ่ม error handling สำหรับ network issues
+                try:
+                    ticker = client.futures_symbol_ticker(symbol=selected_symbol)
+                    price = float(ticker['price'])
 
-                root.after(0, lambda: update_price_display(price))
-                root.after(0, update_account_info)
-                root.after(0, update_portfolio_displays)
+                    root.after(0, lambda: update_price_display(price))
+                    root.after(0, update_account_info)
+                    root.after(0, update_portfolio_displays)
 
-                price_data.append(price)
-                if len(price_data) > 100:
-                    price_data.pop(0)
+                    price_data.append(price)
+                    if len(price_data) > 100:
+                        price_data.pop(0)
+                        
+                except Exception as api_error:
+                    if "502" in str(api_error) or "Bad Gateway" in str(api_error):
+                        logger.log("Temporary server error, retrying...", 'WARNING')
+                        time.sleep(10)  # รอนานกว่าปกติ
+                        continue
+                    else:
+                        logger.log(f"API error in data update: {api_error}", 'ERROR')
+                        time.sleep(5)
+                        continue
 
         except Exception as e:
             logger.log(f"Error updating data: {e}", 'ERROR')
