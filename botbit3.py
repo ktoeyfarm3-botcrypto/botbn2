@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext, filedialog
+from tkinter import ttk, messagebox, scrolledtext
 import hashlib
 import hmac
 import json
@@ -7,26 +7,26 @@ import time
 import requests
 import threading
 from datetime import datetime, timedelta
+import os
 import numpy as np
 from collections import deque
-import logging
-import os
-from urllib.parse import urlencode
-import configparser
 
-# ตรวจสอบ matplotlib
+# Try to import matplotlib, but make it optional
 try:
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-    from matplotlib.animation import FuncAnimation
     import matplotlib.dates as mdates
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
-    print("📊 Matplotlib ไม่พบ - จะปิดการใช้งานกราฟ")
+    print("📊 Matplotlib not found. Chart features will be disabled.")
+    print("   Install with: pip install matplotlib")
 
 class BitkubAPIClient:
-    """คลาสสำหรับเชื่อมต่อ Bitkub API ที่ปรับปรุงแล้ว"""
+    """
+    คลาส API Client ที่แก้ไขแล้วสำหรับ Bitkub
+    รองรับ API V3 และ V4 พร้อม Rate Limiting และ Error Handling
+    """
     
     def __init__(self, api_key="", api_secret=""):
         self.api_key = api_key
@@ -37,11 +37,11 @@ class BitkubAPIClient:
         self.request_times = deque(maxlen=250)
         self.rate_limit_lock = threading.Lock()
         
-        # Setup logging
-        self.logger = logging.getLogger(__name__)
-        
+        # Logging
+        print("🚀 Bitkub API Client initialized")
+    
     def _wait_for_rate_limit(self):
-        """ตรวจสอบ Rate Limit"""
+        """จัดการ Rate Limiting ตาม API documentation"""
         with self.rate_limit_lock:
             now = time.time()
             
@@ -49,19 +49,20 @@ class BitkubAPIClient:
             while self.request_times and (now - self.request_times[0]) > 10:
                 self.request_times.popleft()
             
-            # ถ้าถึงขีดจำกัด ให้รอ
+            # ตรวจสอบ rate limit (250 req / 10 secs)
             if len(self.request_times) >= 250:
                 sleep_time = 10 - (now - self.request_times[0]) + 0.1
                 if sleep_time > 0:
+                    print(f"⏳ Rate limit reached, waiting {sleep_time:.1f} seconds...")
                     time.sleep(sleep_time)
                     self.request_times.clear()
             
             self.request_times.append(now)
     
     def _generate_signature(self, payload_string):
-        """สร้าง HMAC Signature"""
+        """สร้าง HMAC SHA-256 signature ตาม Bitkub spec"""
         if not self.api_secret:
-            raise ValueError("API Secret ไม่ได้ตั้งค่า")
+            raise ValueError("API Secret not configured")
         
         return hmac.new(
             self.api_secret.encode('utf-8'),
@@ -70,15 +71,86 @@ class BitkubAPIClient:
         ).hexdigest()
     
     def _build_query_string(self, params):
-        """สร้าง Query String ที่ถูกต้อง"""
+        """สร้าง query string สำหรับ GET request"""
         if not params:
             return ""
         
+        # กรอง None values และแปลงเป็น string
         filtered_params = {k: str(v) for k, v in params.items() if v is not None}
-        return urlencode(filtered_params)
+        
+        # สร้าง query string
+        query_parts = []
+        for key, value in filtered_params.items():
+            query_parts.append(f"{key}={value}")
+        
+        return "?" + "&".join(query_parts) if query_parts else ""
+    
+    def get_server_time(self):
+        """ดึงเวลาเซิร์ฟเวอร์"""
+        return self.make_public_request('/api/v3/servertime')
+    
+    def get_ticker(self, symbol=None):
+        """ดึงข้อมูล ticker"""
+        params = {'sym': symbol} if symbol else None
+        return self.make_public_request('/api/v3/market/ticker', params)
+    
+    def get_depth(self, symbol, limit=10):
+        """ดึงข้อมูล order book"""
+        params = {'sym': symbol, 'lmt': limit}
+        return self.make_public_request('/api/v3/market/depth', params)
+    
+    def get_wallet(self):
+        """ดึงยอดเงินในกระเป๋า"""
+        return self.make_private_request('POST', '/api/v3/market/wallet')
+    
+    def get_balances(self):
+        """ดึงยอดเงินแบบละเอียด"""
+        return self.make_private_request('POST', '/api/v3/market/balances')
+    
+    def place_buy_order(self, symbol, amount, rate=0, order_type='market', client_id=None):
+        """วางคำสั่งซื้อ"""
+        body = {
+            'sym': symbol,
+            'amt': amount,
+            'rat': rate,
+            'typ': order_type
+        }
+        
+        if client_id:
+            body['client_id'] = client_id
+        
+        return self.make_private_request('POST', '/api/v3/market/place-bid', body=body)
+    
+    def place_sell_order(self, symbol, amount, rate=0, order_type='market', client_id=None):
+        """วางคำสั่งขาย"""
+        body = {
+            'sym': symbol,
+            'amt': amount,
+            'rat': rate,
+            'typ': order_type
+        }
+        
+        if client_id:
+            body['client_id'] = client_id
+        
+        return self.make_private_request('POST', '/api/v3/market/place-ask', body=body)
+    
+    def cancel_order(self, symbol, order_id, side):
+        """ยกเลิกคำสั่ง"""
+        body = {
+            'sym': symbol,
+            'id': order_id,
+            'sd': side
+        }
+        return self.make_private_request('POST', '/api/v3/market/cancel-order', body=body)
+    
+    def get_open_orders(self, symbol):
+        """ดึงรายการคำสั่งที่ยังเปิดอยู่"""
+        params = {'sym': symbol}
+        return self.make_private_request('GET', '/api/v3/market/my-open-orders', params=params)
     
     def make_public_request(self, endpoint, params=None):
-        """เรียก Public API"""
+        """ส่งคำขอ Public API"""
         try:
             self._wait_for_rate_limit()
             
@@ -86,36 +158,55 @@ class BitkubAPIClient:
             response = requests.get(url, params=params, timeout=10)
             response.raise_for_status()
             
-            return response.json()
+            result = response.json()
+            print(f"✅ Public API: {endpoint} - Success")
+            return result
             
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Public API Error ({endpoint}): {e}")
+            return None
         except Exception as e:
-            self.logger.error(f"Public API Error: {e}")
+            print(f"❌ Unexpected error: {e}")
             return None
     
-    def make_private_request(self, method, endpoint, params=None, body=None):
-        """เรียก Private API"""
+    def make_private_request(self, method, endpoint, params=None, body=None, debug=False):
+        """ส่งคำขอ Private API พร้อม authentication และ debug"""
         try:
             if not self.api_key or not self.api_secret:
-                raise ValueError("API Credentials ไม่ได้ตั้งค่า")
+                raise ValueError("API credentials not configured")
             
             self._wait_for_rate_limit()
             
-            ts = str(round(time.time() * 1000))
+            # ดึงเวลาจากเซิร์ฟเวอร์ Bitkub
+            try:
+                server_time_response = requests.get(f"{self.base_url}/api/v3/servertime", timeout=5)
+                ts = str(server_time_response.json())
+            except:
+                # ถ้าไม่ได้ ใช้เวลาเครื่อง
+                ts = str(round(time.time() * 1000))
+            
             url = f"{self.base_url}{endpoint}"
+            
+            # สร้าง payload สำหรับ signature
             payload_parts = [ts, method.upper(), endpoint]
             
             if method.upper() == 'GET' and params:
                 query_string = self._build_query_string(params)
                 if query_string:
-                    payload_parts.append(f"?{query_string}")
-                    url += f"?{query_string}"
+                    payload_parts.append(query_string)
+                    url += query_string
             elif method.upper() == 'POST' and body:
                 json_body = json.dumps(body, separators=(',', ':'))
                 payload_parts.append(json_body)
+            elif method.upper() == 'POST':
+                # สำหรับ POST ที่ไม่มี body ต้องใส่ {} 
+                payload_parts.append('{}')
             
+            # สร้าง signature
             payload_string = ''.join(payload_parts)
             signature = self._generate_signature(payload_string)
             
+            # Headers
             headers = {
                 'Accept': 'application/json',
                 'Content-Type': 'application/json',
@@ -124,1292 +215,1033 @@ class BitkubAPIClient:
                 'X-BTK-APIKEY': self.api_key
             }
             
+            # Debug output
+            if debug or endpoint == '/api/v3/market/wallet':
+                print(f"\n🔧 === DEBUG API REQUEST ===")
+                print(f"Method: {method}")
+                print(f"Endpoint: {endpoint}")
+                print(f"URL: {url}")
+                print(f"Timestamp: {ts}")
+                print(f"Payload String: {payload_string}")
+                print(f"Signature: {signature}")
+                print(f"API Key: {self.api_key[:16]}...")
+                print(f"API Secret: {self.api_secret[:16]}...")
+                print(f"===========================\n")
+            
+            # ส่งคำขอ
             if method.upper() == 'GET':
                 response = requests.get(url, headers=headers, timeout=10)
             else:
                 response = requests.post(url, headers=headers, json=body or {}, timeout=10)
             
-            response.raise_for_status()
-            return response.json()
+            # Debug response
+            if debug or endpoint == '/api/v3/market/wallet':
+                print(f"📡 Response Status: {response.status_code}")
+                print(f"📤 Response Headers: {dict(response.headers)}")
+                if response.status_code != 200:
+                    print(f"📝 Response Text: {response.text}")
             
-        except Exception as e:
-            self.logger.error(f"Private API Error: {e}")
+            response.raise_for_status()
+            result = response.json()
+            
+            # ตรวจสอบ error code
+            if isinstance(result, dict) and result.get('error') != 0:
+                error_code = result.get('error')
+                print(f"⚠️ API Error Code: {error_code}")
+                print(f"📋 Error Message: {self.get_error_description(error_code)}")
+            else:
+                print(f"✅ Private API: {endpoint} - Success")
+            
+            return result
+            
+        except ValueError as e:
+            print(f"❌ Configuration Error: {e}")
             return None
-
-class TradingStrategy:
-    """คลาสกลยุทธ์การเทรด"""
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Private API Error ({endpoint}): {e}")
+            if "401" in str(e):
+                print("🔍 Possible causes:")
+                print("   1. ตรวจสอบ API Key และ Secret")
+                print("   2. ตรวจสอบ API Permissions (ต้องมี 'trade' permission)")
+                print("   3. ตรวจสอบ IP Whitelist ใน Bitkub")
+                print("   4. ตรวจสอบว่า API ยังไม่หมดอายุ")
+            return None
+        except Exception as e:
+            print(f"❌ Unexpected error: {e}")
+            return None
     
-    @staticmethod
-    def momentum_strategy(prices, current_price, period=10):
-        """กลยุทธ์ Momentum ที่ปรับปรุงแล้ว"""
-        if len(prices) < period:
-            return {'action': 'hold', 'confidence': 0, 'reason': 'ข้อมูลไม่เพียงพอ'}
-        
-        short_ma = np.mean(prices[-5:])
-        long_ma = np.mean(prices[-period:])
-        
-        # คำนวณ RSI เพื่อช่วยตัดสินใจ
-        rsi = TradingStrategy.calculate_rsi(prices)
-        
-        momentum_ratio = (short_ma - long_ma) / long_ma
-        
-        if momentum_ratio > 0.002 and rsi < 70:  # ป้องกันการซื้อเมื่อ overbought
-            confidence = min(0.8, abs(momentum_ratio) * 100)
-            return {
-                'action': 'buy', 
-                'confidence': confidence,
-                'reason': f'Momentum เพิ่มขึ้น: {momentum_ratio:.4f}, RSI: {rsi:.1f}'
-            }
-        elif momentum_ratio < -0.002 and rsi > 30:  # ป้องกันการขายเมื่อ oversold
-            confidence = min(0.8, abs(momentum_ratio) * 100)
-            return {
-                'action': 'sell', 
-                'confidence': confidence,
-                'reason': f'Momentum ลดลง: {momentum_ratio:.4f}, RSI: {rsi:.1f}'
-            }
-        
-        return {
-            'action': 'hold', 
-            'confidence': 0.3,
-            'reason': f'Momentum กลาง ๆ: {momentum_ratio:.4f}, RSI: {rsi:.1f}'
+    def get_error_description(self, error_code):
+        """แปลง error code เป็นคำอธิบาย"""
+        error_descriptions = {
+            0: "สำเร็จ - ไม่มีข้อผิดพลาด",
+            1: "JSON payload ไม่ถูกต้อง",
+            2: "ไม่พบ X-BTK-APIKEY",
+            3: "API key ไม่ถูกต้อง",
+            4: "API รอการอนุมัติ",
+            5: "IP address ไม่ได้รับอนุญาต",
+            6: "Signature หายไปหรือไม่ถูกต้อง",
+            7: "ไม่พบ timestamp",
+            8: "Timestamp ไม่ถูกต้อง",
+            9: "ผู้ใช้ไม่ถูกต้องหรือถูกระงับ",
+            10: "Parameter ไม่ถูกต้อง",
+            11: "Symbol ไม่ถูกต้อง",
+            12: "จำนวนเงินไม่ถูกต้องหรือต่ำเกินไป",
+            13: "ราคาไม่ถูกต้อง",
+            14: "ราคาไม่เหมาะสม",
+            15: "จำนวนเงินต่ำเกินไป",
+            16: "ไม่สามารถดึงยอดเงินได้",
+            17: "กระเป๋าเงินว่าง",
+            18: "ยอดเงินไม่เพียงพอ",
+            21: "คำสั่งไม่ถูกต้องสำหรับการยกเลิก",
+            22: "ฝั่งการเทรดไม่ถูกต้อง (buy/sell)",
+            25: "ต้องผ่าน KYC ระดับ 1",
+            30: "เกินขีดจำกัด",
+            90: "ข้อผิดพลาดเซิร์ฟเวอร์"
         }
+        
+        return error_descriptions.get(error_code, f"ข้อผิดพลาดไม่ทราบ (Code: {error_code})")
     
-    @staticmethod
-    def calculate_rsi(prices, period=14):
-        """คำนวณ RSI"""
-        if len(prices) < period + 1:
-            return 50  # ค่ากลางถ้าข้อมูลไม่พอ
+    def test_connection(self):
+        """ทดสอบการเชื่อมต่อ API"""
+        print("🔍 Testing API connection...")
         
-        prices_array = np.array(prices)
-        deltas = np.diff(prices_array)
+        # ทดสอบ Public API
+        server_time = self.get_server_time()
+        if not server_time:
+            print("❌ Public API connection failed")
+            return False
         
-        gains = np.where(deltas > 0, deltas, 0)
-        losses = np.where(deltas < 0, -deltas, 0)
+        print("✅ Public API working")
         
-        avg_gain = np.mean(gains[-period:])
-        avg_loss = np.mean(losses[-period:])
-        
-        if avg_loss == 0:
-            return 100
-        
-        rs = avg_gain / avg_loss
-        rsi = 100 - (100 / (1 + rs))
-        
-        return rsi
-    
-    @staticmethod
-    def bollinger_bands_strategy(prices, current_price, period=20, std_mult=2):
-        """กลยุทธ์ Bollinger Bands"""
-        if len(prices) < period:
-            return {'action': 'hold', 'confidence': 0, 'reason': 'ข้อมูลไม่เพียงพอ'}
-        
-        prices_array = np.array(prices[-period:])
-        middle = np.mean(prices_array)
-        std = np.std(prices_array)
-        
-        upper_band = middle + (std_mult * std)
-        lower_band = middle - (std_mult * std)
-        
-        if current_price <= lower_band:
-            return {
-                'action': 'buy',
-                'confidence': 0.8,
-                'reason': f'ราคาต่ำกว่า Lower Band: {current_price:.2f} <= {lower_band:.2f}'
-            }
-        elif current_price >= upper_band:
-            return {
-                'action': 'sell',
-                'confidence': 0.8,
-                'reason': f'ราคาสูงกว่า Upper Band: {current_price:.2f} >= {upper_band:.2f}'
-            }
-        
-        return {
-            'action': 'hold',
-            'confidence': 0.2,
-            'reason': f'ราคาอยู่ในแถบ: {lower_band:.2f} < {current_price:.2f} < {upper_band:.2f}'
-        }
+        # ทดสอบ Private API (ถ้ามี credentials)
+        if self.api_key and self.api_secret:
+            wallet = self.get_wallet()
+            if wallet and wallet.get('error') == 0:
+                print("✅ Private API working")
+                
+                # แสดงยอดเงิน
+                balance_data = wallet.get('result', {})
+                thb_balance = balance_data.get('THB', 0)
+                print(f"💰 THB Balance: {thb_balance:,.2f}")
+                
+                return True
+            else:
+                print("❌ Private API authentication failed")
+                return False
+        else:
+            print("⚠️ No API credentials for Private API testing")
+            return True
 
-class BitkubTradingBot:
+class BitkubAIGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("🚀 Bitkub AI Trading Bot - Professional Edition")
         self.root.geometry("1400x900")
-        self.root.configure(bg='#2b2b2b')
+        self.root.configure(bg='#1e1e1e')
         
-        # Setup logging
-        self.setup_logging()
+        # Configure modern style
+        self.setup_styles()
         
         # API Client
         self.api_client = None
         
-        # Trading state
+        # AI Trading Variables
         self.ai_enabled = False
-        self.price_history = deque(maxlen=200)
+        self.price_history = deque(maxlen=100)
+        self.trade_signals = deque(maxlen=50)
+        self.auto_trading_thread = None
         self.stop_trading = False
+        
+        # Portfolio tracking
+        self.portfolio = {"THB": 0, "BTC": 0, "ETH": 0}
+        self.initial_balance = 0
         self.total_trades = 0
-        self.successful_trades = 0
-        self.failed_trades = 0
-        self.total_profit_loss = 0.0
+        self.profitable_trades = 0
         
-        # Chart variables
-        self.fig = None
-        self.ax = None
-        self.canvas = None
-        self.animation = None
+        self.setup_gui()
         
-        # Configuration
-        self.config = configparser.ConfigParser()
-        self.config_file = 'bot_config.ini'
-        self.load_configuration()
-        
-        # ตั้งค่า Style และสร้าง GUI
-        self.setup_styles()
-        self.create_widgets()
-        
-        # เริ่มต้นการติดตามราคา
-        self.start_price_monitoring()
-        
-        # โหลดการตั้งค่าที่บันทึกไว้
-        self.load_saved_settings()
-        
-    def setup_logging(self):
-        """ตั้งค่า Logging"""
-        if not os.path.exists('logs'):
-            os.makedirs('logs')
-            
-        log_filename = f"logs/trading_bot_{datetime.now().strftime('%Y%m%d')}.log"
-        
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_filename, encoding='utf-8'),
-                logging.StreamHandler()
-            ]
-        )
-        self.logger = logging.getLogger('BitkubBot')
-    
-    def load_configuration(self):
-        """โหลดการตั้งค่าจากไฟล์"""
-        if os.path.exists(self.config_file):
-            self.config.read(self.config_file, encoding='utf-8')
-    
-    def save_configuration(self):
-        """บันทึกการตั้งค่าลงไฟล์"""
-        with open(self.config_file, 'w', encoding='utf-8') as f:
-            self.config.write(f)
-    
     def setup_styles(self):
-        """ตั้งค่า Style อย่างง่าย"""
+        """Setup modern dark theme styles"""
         style = ttk.Style()
         
-        # ใช้ theme ที่มีอยู่
+        # Use a compatible theme
         try:
             style.theme_use('clam')
         except:
             style.theme_use('default')
         
-        # ตั้งค่าสีพื้นฐาน
-        try:
-            style.configure('TLabel', font=('Segoe UI', 10))
-            style.configure('Header.TLabel', font=('Segoe UI', 12, 'bold'))
-            style.configure('Title.TLabel', font=('Segoe UI', 16, 'bold'), foreground='#00d4aa')
-            style.configure('Success.TLabel', font=('Segoe UI', 11, 'bold'), foreground='#51cf66')
-            style.configure('Error.TLabel', font=('Segoe UI', 11, 'bold'), foreground='#ff6b6b')
-        except:
-            pass
+        # Configure colors
+        bg_color = '#2b2b2b'
+        fg_color = '#ffffff'
+        select_color = '#404040'
+        accent_color = '#00d4aa'
         
-    def create_widgets(self):
-        """สร้าง GUI"""
+        # Configure standard ttk styles
+        style.configure('TLabel', 
+                       background=bg_color, foreground=fg_color, 
+                       font=('Segoe UI', 10))
+        
+        style.configure('TLabelFrame', 
+                       background=bg_color, foreground=fg_color,
+                       borderwidth=1, relief='solid')
+        
+        style.configure('TFrame', background=bg_color)
+        
+        style.configure('TButton', 
+                       background=select_color, foreground=fg_color,
+                       borderwidth=1, focuscolor='none')
+        
+        style.configure('TEntry', 
+                       insertcolor=fg_color, fieldbackground='#404040',
+                       borderwidth=1, foreground=fg_color)
+        
+        style.configure('TCombobox', 
+                       fieldbackground='#404040', background=select_color,
+                       foreground=fg_color, borderwidth=1)
+        
+        # Map styles for hover effects
+        style.map('TButton',
+                 background=[('active', accent_color), ('pressed', accent_color)],
+                 foreground=[('active', '#000000'), ('pressed', '#000000')])
+        
+        # Configure Notebook
+        style.configure('TNotebook', background=bg_color, borderwidth=1)
+        style.configure('TNotebook.Tab', 
+                       background=select_color, foreground=fg_color,
+                       padding=[12, 8])
+        style.map('TNotebook.Tab',
+                 background=[('selected', accent_color), ('active', '#505050')],
+                 foreground=[('selected', '#000000'), ('active', fg_color)])
+        
+    def setup_gui(self):
+        # Configure root window
+        self.root.configure(bg='#2b2b2b')
         
         # Main container
-        main_frame = ttk.Frame(self.root)
-        main_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        main_container = ttk.Frame(self.root)
+        main_container.pack(fill='both', expand=True, padx=10, pady=10)
         
         # Header
-        self.create_header(main_frame)
+        self.setup_header(main_container)
         
-        # Notebook
-        notebook = ttk.Notebook(main_frame)
+        # Create main notebook for tabs
+        notebook = ttk.Notebook(main_container)
         notebook.pack(fill='both', expand=True, pady=(10, 0))
         
-        # สร้างแท็บต่าง ๆ
-        self.create_dashboard_tab(notebook)
-        self.create_api_config_tab(notebook)
-        self.create_ai_trading_tab(notebook)
-        self.create_manual_trading_tab(notebook)
-        self.create_portfolio_tab(notebook)
-        self.create_market_data_tab(notebook)
-        self.create_settings_tab(notebook)
+        # Setup all tabs
+        self.setup_dashboard_tab(notebook)
+        self.setup_api_tab(notebook)
+        self.setup_manual_trading_tab(notebook)
+        self.setup_market_tab(notebook)
+        self.setup_portfolio_tab(notebook)
+        self.setup_orders_tab(notebook)
         
-        # Status bar
-        self.create_status_bar(main_frame)
+        # Status bar with modern styling
+        self.setup_status_bar(main_container)
         
-    def create_header(self, parent):
-        """สร้าง Header"""
+    def setup_header(self, parent):
+        """Setup modern header with logo and stats"""
         header_frame = ttk.Frame(parent)
         header_frame.pack(fill='x', pady=(0, 10))
         
-        # Title
-        ttk.Label(header_frame, text="🚀 Bitkub AI Trading Bot", 
-                 style='Title.TLabel').pack(side='left')
+        # Logo and title
+        title_frame = ttk.Frame(header_frame)
+        title_frame.pack(side='left')
         
-        # Stats
+        ttk.Label(title_frame, text="🚀", font=('Segoe UI', 24)).pack(side='left')
+        title_label = ttk.Label(title_frame, text="Bitkub AI Trading Bot", 
+                               font=('Segoe UI', 16, 'bold'), foreground='#00d4aa')
+        title_label.pack(side='left', padx=(10, 0))
+        
+        # Stats panel
         stats_frame = ttk.Frame(header_frame)
-        stats_frame.pack(side='left', expand=True, padx=50)
+        stats_frame.pack(side='right')
         
-        self.header_stats = {}
-        quick_stats = [
-            ("การเชื่อมต่อ", "🔴 ไม่ได้เชื่อมต่อ"),
-            ("AI Trading", "🔴 ปิด"),
-            ("จำนวนเทรด", "0"),
-            ("กำไร/ขาดทุน", "0.00%")
+        self.stats_labels = {}
+        stats = [
+            ("💰 Balance", "0 THB"),
+            ("📈 P&L", "0.00%"),
+            ("🤖 Connection", "Offline"),
+            ("📊 Trades", "0")
         ]
         
-        for i, (label, value) in enumerate(quick_stats):
-            stat_frame = ttk.Frame(stats_frame)
-            stat_frame.grid(row=0, column=i, padx=10)
+        for i, (label, value) in enumerate(stats):
+            frame = ttk.Frame(stats_frame)
+            frame.grid(row=0, column=i, padx=10)
             
-            ttk.Label(stat_frame, text=label, font=('Segoe UI', 9)).pack()
-            self.header_stats[label] = ttk.Label(stat_frame, text=value, style='Header.TLabel')
-            self.header_stats[label].pack()
+            ttk.Label(frame, text=label, font=('Segoe UI', 9)).pack()
+            self.stats_labels[label] = ttk.Label(frame, text=value, 
+                                               font=('Segoe UI', 12, 'bold'))
+            self.stats_labels[label].pack()
+    
+    def setup_dashboard_tab(self, notebook):
+        """Dashboard with live charts and overview"""
+        dash_frame = ttk.Frame(notebook)
+        notebook.add(dash_frame, text="📊 Dashboard")
         
-        # Control buttons
-        control_frame = ttk.Frame(header_frame)
-        control_frame.pack(side='right')
+        # Top metrics
+        metrics_frame = ttk.LabelFrame(dash_frame, text="📈 Live Metrics", padding=10)
+        metrics_frame.pack(fill='x', padx=10, pady=10)
         
-        self.quick_start_btn = ttk.Button(control_frame, text="🚀 เริ่ม AI",
-                                         command=self.quick_start_ai)
-        self.quick_start_btn.pack(side='right', padx=5)
+        metrics_inner = ttk.Frame(metrics_frame)
+        metrics_inner.pack(fill='x')
         
-    def create_dashboard_tab(self, notebook):
-        """แท็บ Dashboard"""
-        frame = ttk.Frame(notebook)
-        notebook.add(frame, text="📊 Dashboard")
+        # Create metric cards
+        self.metric_cards = {}
+        metrics = ["BTC Price", "ETH Price", "Portfolio Value", "24h Change"]
         
-        # สถิติการเทรด
-        stats_frame = ttk.LabelFrame(frame, text="📈 สถิติการเทรด")
-        stats_frame.pack(fill='x', padx=10, pady=10)
-        
-        stats_container = ttk.Frame(stats_frame)
-        stats_container.pack(fill='x', padx=10, pady=10)
-        
-        self.stats_cards = {}
-        detailed_stats = [
-            ("💰 ยอดเงิน (THB)", "0.00"),
-            ("📈 กำไร/ขาดทุน", "0.00%"),
-            ("🎯 อัตราความสำเร็จ", "0%"),
-            ("📊 จำนวนเทรดสำเร็จ", "0"),
-            ("❌ จำนวนเทรดล้มเหลว", "0"),
-            ("⏱️ เวลาเทรดล่าสุด", "ยังไม่มี")
-        ]
-        
-        for i, (label, value) in enumerate(detailed_stats):
-            row, col = i // 3, i % 3
-            card_frame = ttk.Frame(stats_container)
-            card_frame.grid(row=row, column=col, padx=10, pady=5, sticky='ew')
+        for i, metric in enumerate(metrics):
+            card = ttk.Frame(metrics_inner, relief='solid')
+            card.grid(row=0, column=i, padx=10, pady=5, sticky='ew')
+            metrics_inner.grid_columnconfigure(i, weight=1)
             
-            ttk.Label(card_frame, text=label, style='Header.TLabel').pack()
-            self.stats_cards[label] = ttk.Label(card_frame, text=value)
-            self.stats_cards[label].pack()
+            ttk.Label(card, text=metric, font=('Segoe UI', 10)).pack(pady=2)
+            self.metric_cards[metric] = ttk.Label(card, text="Loading...", 
+                                                font=('Segoe UI', 12, 'bold'))
+            self.metric_cards[metric].pack(pady=2)
         
-        for i in range(3):
-            stats_container.grid_columnconfigure(i, weight=1)
-        
-        # กราฟราคา
-        if MATPLOTLIB_AVAILABLE:
-            self.create_price_chart(frame)
-        
-        # การกระทำด่วน
-        self.create_quick_actions(frame)
-        
-    def create_price_chart(self, parent):
-        """สร้างกราฟราคา"""
-        chart_frame = ttk.LabelFrame(parent, text="📈 กราฟราคา")
+        # Chart area
+        chart_frame = ttk.LabelFrame(dash_frame, text="📈 Price Chart", padding=10)
         chart_frame.pack(fill='both', expand=True, padx=10, pady=10)
         
-        self.fig, self.ax = plt.subplots(figsize=(12, 4), facecolor='#2b2b2b')
-        self.ax.set_facecolor('#2b2b2b')
+        # Create chart
+        if MATPLOTLIB_AVAILABLE:
+            self.setup_chart(chart_frame)
+        else:
+            ttk.Label(chart_frame, text="📊 Chart not available\nInstall matplotlib for chart features", 
+                     font=('Segoe UI', 12), foreground='orange').pack(expand=True)
         
-        # ตั้งค่าสีของแกน
-        self.ax.tick_params(colors='white')
-        for spine in self.ax.spines.values():
-            spine.set_color('white')
-        self.ax.set_title('BTC/THB Price Movement', color='white', fontsize=14)
-        self.ax.set_ylabel('Price (THB)', color='white')
-        
-        self.canvas = FigureCanvasTkAgg(self.fig, chart_frame)
-        self.canvas.get_tk_widget().pack(fill='both', expand=True, padx=10, pady=10)
-        
-        self.start_chart_animation()
-    
-    def start_chart_animation(self):
-        """เริ่ม animation สำหรับกราฟ"""
-        def update_chart(frame):
-            if len(self.price_history) > 1:
-                self.ax.clear()
-                self.ax.set_facecolor('#2b2b2b')
-                self.ax.tick_params(colors='white')
-                for spine in self.ax.spines.values():
-                    spine.set_color('white')
-                
-                prices = list(self.price_history)
-                times = range(len(prices))
-                
-                self.ax.plot(times, prices, color='#00d4aa', linewidth=2, alpha=0.8)
-                
-                if len(prices) >= 20:
-                    ma20 = [np.mean(prices[max(0, i-19):i+1]) for i in range(len(prices))]
-                    self.ax.plot(times, ma20, color='#ff6b6b', linewidth=1, alpha=0.7, label='MA20')
-                
-                self.ax.set_title('BTC/THB Price Movement', color='white')
-                self.ax.set_ylabel('Price (THB)', color='white')
-                
-                if len(prices) >= 2:
-                    self.ax.legend(facecolor='#3d3d3d', edgecolor='white', labelcolor='white')
-                
-                if len(times) > 100:
-                    self.ax.set_xlim(len(times) - 100, len(times))
-            
-            return []
-        
-        self.animation = FuncAnimation(self.fig, update_chart, interval=5000, blit=False)
-    
-    def create_quick_actions(self, parent):
-        """สร้างส่วนการกระทำด่วน"""
-        actions_frame = ttk.LabelFrame(parent, text="⚡ การกระทำด่วน")
+        # Quick actions
+        actions_frame = ttk.LabelFrame(dash_frame, text="⚡ Quick Actions", padding=10)
         actions_frame.pack(fill='x', padx=10, pady=10)
         
-        button_container = ttk.Frame(actions_frame)
-        button_container.pack(padx=10, pady=10)
+        actions_inner = ttk.Frame(actions_frame)
+        actions_inner.pack(fill='x')
         
-        buttons = [
-            ("🔄 รีเฟรชข้อมูล", self.refresh_dashboard),
-            ("💰 ตรวจสอบยอดเงิน", self.quick_balance_check),
-            ("📊 ดูสถิติ", self.show_detailed_stats),
-            ("💾 บันทึกการตั้งค่า", self.save_all_settings),
-        ]
-        
-        for text, command in buttons:
-            ttk.Button(button_container, text=text, command=command).pack(side='left', padx=5)
+        ttk.Button(actions_inner, text="💰 Get Balance",
+                  command=self.quick_balance_check).pack(side='left', padx=5)
+        ttk.Button(actions_inner, text="📊 Refresh Data",
+                  command=self.refresh_dashboard).pack(side='left', padx=5)
     
-    def create_api_config_tab(self, notebook):
-        """แท็บ API Configuration"""
-        frame = ttk.Frame(notebook)
-        notebook.add(frame, text="🔧 ตั้งค่า API")
+    def setup_chart(self, parent):
+        """Setup matplotlib chart for price data"""
+        if not MATPLOTLIB_AVAILABLE:
+            return
+            
+        self.fig, self.ax = plt.subplots(figsize=(10, 4), facecolor='#2b2b2b')
+        self.ax.set_facecolor('#2b2b2b')
+        self.ax.tick_params(colors='white')
+        self.ax.spines['bottom'].set_color('white')
+        self.ax.spines['top'].set_color('white')
+        self.ax.spines['right'].set_color('white')
+        self.ax.spines['left'].set_color('white')
         
-        # การตั้งค่า API
-        config_frame = ttk.LabelFrame(frame, text="🔐 การตั้งค่า API")
-        config_frame.pack(fill='x', padx=20, pady=20)
+        self.canvas = FigureCanvasTkAgg(self.fig, parent)
+        self.canvas.get_tk_widget().pack(fill='both', expand=True)
         
-        config_container = ttk.Frame(config_frame)
-        config_container.pack(fill='x', padx=10, pady=10)
+        # Initialize empty plot
+        self.ax.plot([], [], color='#00d4aa', linewidth=2)
+        self.ax.set_title('BTC/THB Price', color='white', fontsize=14)
+        self.ax.set_ylabel('Price (THB)', color='white')
         
-        # API Key
-        ttk.Label(config_container, text="API Key:", style='Header.TLabel').grid(
-            row=0, column=0, sticky='w', padx=10, pady=10)
-        self.api_key_entry = ttk.Entry(config_container, width=60, show="*")
-        self.api_key_entry.grid(row=0, column=1, padx=10, pady=10, sticky='ew')
+    def setup_api_tab(self, notebook):
+        """API Settings with modern design"""
+        api_frame = ttk.Frame(notebook)
+        notebook.add(api_frame, text="🔧 API Settings")
         
-        # API Secret
-        ttk.Label(config_container, text="API Secret:", style='Header.TLabel').grid(
-            row=1, column=0, sticky='w', padx=10, pady=10)
-        self.api_secret_entry = ttk.Entry(config_container, width=60, show="*")
-        self.api_secret_entry.grid(row=1, column=1, padx=10, pady=10, sticky='ew')
+        # API Configuration
+        config_frame = ttk.LabelFrame(api_frame, text="🔐 API Configuration", padding=20)
+        config_frame.pack(fill='x', padx=10, pady=10)
         
-        config_container.grid_columnconfigure(1, weight=1)
+        # Instructions
+        instruction_text = """
+📝 How to create API Key in Bitkub:
+
+1. Login to Bitkub.com
+2. Go to Settings > API Management
+3. Create new API Key with permissions:
+   ✅ View Portfolio (for balance viewing)
+   ✅ Trade (for trading)
+   ❌ Withdraw (not recommended for security)
+4. Copy API Key and Secret below
+
+⚠️ Warning: Never share your API Secret and keep it secure!
+        """
         
-        # ปุ่มควบคุม
-        button_frame = ttk.Frame(config_frame)
-        button_frame.pack(fill='x', padx=10, pady=10)
+        instruction_label = ttk.Label(config_frame, text=instruction_text, 
+                                    font=('Segoe UI', 9), justify='left')
+        instruction_label.pack(fill='x', pady=(0, 20))
         
-        ttk.Button(button_frame, text="💾 บันทึก", 
+        # API Key input frame
+        api_key_frame = ttk.Frame(config_frame)
+        api_key_frame.pack(fill='x', pady=5)
+        
+        ttk.Label(api_key_frame, text="API Key:", font=('Segoe UI', 12, 'bold')).pack(anchor='w')
+        self.api_key_entry = ttk.Entry(api_key_frame, width=80, show="*", font=('Consolas', 10))
+        self.api_key_entry.pack(fill='x', pady=(5, 0))
+        
+        # API Secret input frame
+        api_secret_frame = ttk.Frame(config_frame)
+        api_secret_frame.pack(fill='x', pady=5)
+        
+        ttk.Label(api_secret_frame, text="API Secret:", font=('Segoe UI', 12, 'bold')).pack(anchor='w')
+        self.api_secret_entry = ttk.Entry(api_secret_frame, width=80, show="*", font=('Consolas', 10))
+        self.api_secret_entry.pack(fill='x', pady=(5, 0))
+        
+        # Buttons
+        btn_frame = ttk.Frame(config_frame)
+        btn_frame.pack(fill='x', pady=20)
+        
+        ttk.Button(btn_frame, text="💾 Save Configuration",
                   command=self.save_api_config).pack(side='left', padx=5)
-        ttk.Button(button_frame, text="🔍 ทดสอบการเชื่อมต่อ", 
+        ttk.Button(btn_frame, text="🔍 Test Connection",
                   command=self.test_api_connection).pack(side='left', padx=5)
+        ttk.Button(btn_frame, text="👁️ Show/Hide",
+                  command=self.toggle_api_visibility).pack(side='left', padx=5)
         
-        # สถานะการเชื่อมต่อ
-        status_frame = ttk.LabelFrame(frame, text="🌐 สถานะการเชื่อมต่อ")
-        status_frame.pack(fill='x', padx=20, pady=20)
+        # Connection Status
+        status_frame = ttk.LabelFrame(api_frame, text="🌐 Connection Status", padding=20)
+        status_frame.pack(fill='x', padx=10, pady=10)
         
-        self.connection_status = ttk.Label(status_frame, text="⚫ ไม่ได้เชื่อมต่อ", 
-                                         style='Error.TLabel', font=('Segoe UI', 12, 'bold'))
-        self.connection_status.pack(pady=10)
+        self.connection_status = ttk.Label(status_frame, text="⚫ Not Connected", 
+                                         font=('Segoe UI', 12))
+        self.connection_status.pack()
         
-        # Log
-        log_frame = ttk.LabelFrame(frame, text="📝 Log การทำงาน")
-        log_frame.pack(fill='both', expand=True, padx=20, pady=20)
+        # API Logs
+        log_frame = ttk.LabelFrame(api_frame, text="📝 API Logs", padding=10)
+        log_frame.pack(fill='both', expand=True, padx=10, pady=10)
         
-        self.log_text = scrolledtext.ScrolledText(log_frame, height=15, 
-                                                bg='#1e1e1e', fg='#00d4aa', 
+        self.log_text = scrolledtext.ScrolledText(log_frame, bg='#1e1e1e', fg='#ffffff',
                                                 font=('Consolas', 10))
-        self.log_text.pack(fill='both', expand=True, padx=10, pady=10)
+        self.log_text.pack(fill='both', expand=True)
         
-    def create_ai_trading_tab(self, notebook):
-        """แท็บ AI Trading"""
-        frame = ttk.Frame(notebook)
-        notebook.add(frame, text="🤖 AI Trading")
+    def setup_manual_trading_tab(self, notebook):
+        """Manual trading with advanced features"""
+        trading_frame = ttk.Frame(notebook)
+        notebook.add(trading_frame, text="💰 Manual Trading")
         
-        # การตั้งค่า AI
-        ai_config_frame = ttk.LabelFrame(frame, text="🧠 การตั้งค่า AI Trading")
-        ai_config_frame.pack(fill='x', padx=20, pady=20)
+        # Trading interface with modern cards
+        main_trading = ttk.Frame(trading_frame)
+        main_trading.pack(fill='both', expand=True, padx=10, pady=10)
         
-        config_grid = ttk.Frame(ai_config_frame)
-        config_grid.pack(fill='x', padx=10, pady=10)
+        # Buy side
+        buy_frame = ttk.LabelFrame(main_trading, text="🟢 BUY ORDER", padding=15)
+        buy_frame.pack(side='left', fill='both', expand=True, padx=(0, 5))
         
-        # การตั้งค่าพื้นฐาน
-        basic_settings = [
-            ("Symbol:", "ai_symbol_var", ["btc_thb", "eth_thb", "ada_thb"]),
-            ("กลยุทธ์:", "ai_strategy_var", ["momentum", "bollinger_bands", "hybrid"]),
-            ("ระดับความเสี่ยง:", "ai_risk_var", ["low", "medium", "high"])
-        ]
+        self.setup_trading_form(buy_frame, "buy")
         
-        self.ai_vars = {}
-        for i, (label, var_name, values) in enumerate(basic_settings):
-            ttk.Label(config_grid, text=label, style='Header.TLabel').grid(
-                row=i, column=0, sticky='w', padx=5, pady=5)
-            var = tk.StringVar(value=values[0])
-            self.ai_vars[var_name] = var
-            combo = ttk.Combobox(config_grid, textvariable=var, values=values, state='readonly')
-            combo.grid(row=i, column=1, padx=5, pady=5, sticky='ew')
+        # Sell side
+        sell_frame = ttk.LabelFrame(main_trading, text="🔴 SELL ORDER", padding=15)
+        sell_frame.pack(side='right', fill='both', expand=True, padx=(5, 0))
         
-        # การตั้งค่าขั้นสูง
-        advanced_settings = [
-            ("จำนวนเงินต่อเทรด (THB):", "ai_amount_var", "1000"),
-            ("จำนวนเทรดสูงสุดต่อชั่วโมง:", "ai_max_trades_var", "5"),
-        ]
+        self.setup_trading_form(sell_frame, "sell")
         
-        for i, (label, var_name, default) in enumerate(advanced_settings, len(basic_settings)):
-            ttk.Label(config_grid, text=label, style='Header.TLabel').grid(
-                row=i, column=0, sticky='w', padx=5, pady=5)
-            var = tk.StringVar(value=default)
-            self.ai_vars[var_name] = var
-            entry = ttk.Entry(config_grid, textvariable=var)
-            entry.grid(row=i, column=1, padx=5, pady=5, sticky='ew')
+        # Trading results
+        result_frame = ttk.LabelFrame(trading_frame, text="📊 Trading Results", padding=10)
+        result_frame.pack(fill='x', padx=10, pady=10)
         
-        config_grid.grid_columnconfigure(1, weight=1)
+        self.trading_text = scrolledtext.ScrolledText(result_frame, height=8, 
+                                                    bg='#1e1e1e', fg='#ffffff',
+                                                    font=('Consolas', 10))
+        self.trading_text.pack(fill='both', expand=True)
         
-        # ปุ่มควบคุม AI
-        ai_control_frame = ttk.Frame(ai_config_frame)
-        ai_control_frame.pack(fill='x', padx=10, pady=10)
+    def setup_trading_form(self, parent, side):
+        """Setup trading form for buy/sell"""
+        # Symbol
+        ttk.Label(parent, text="Symbol:", font=('Segoe UI', 12, 'bold')).grid(row=0, column=0, sticky='w', pady=5)
+        symbol_var = tk.StringVar(value="btc_thb")
+        setattr(self, f"{side}_symbol_var", symbol_var)
+        ttk.Combobox(parent, textvariable=symbol_var, 
+                    values=["btc_thb", "eth_thb", "ada_thb"]).grid(row=0, column=1, sticky='ew', padx=5)
         
-        self.ai_start_button = ttk.Button(ai_control_frame, text="🚀 เริ่ม AI Trading", 
-                                        command=self.toggle_ai_trading)
-        self.ai_start_button.pack(side='left', padx=5)
+        # Amount
+        amount_label = "Amount (THB):" if side == "buy" else "Amount (Crypto):"
+        ttk.Label(parent, text=amount_label, font=('Segoe UI', 12, 'bold')).grid(row=1, column=0, sticky='w', pady=5)
+        amount_var = tk.StringVar()
+        setattr(self, f"{side}_amount_var", amount_var)
+        ttk.Entry(parent, textvariable=amount_var, font=('Segoe UI', 11)).grid(row=1, column=1, sticky='ew', padx=5)
         
-        # สถิติ AI
-        ai_stats_frame = ttk.LabelFrame(frame, text="📊 สถิติ AI Trading")
-        ai_stats_frame.pack(fill='x', padx=20, pady=20)
+        # Rate
+        ttk.Label(parent, text="Rate:", font=('Segoe UI', 12, 'bold')).grid(row=2, column=0, sticky='w', pady=5)
+        rate_var = tk.StringVar()
+        setattr(self, f"{side}_rate_var", rate_var)
+        ttk.Entry(parent, textvariable=rate_var, font=('Segoe UI', 11)).grid(row=2, column=1, sticky='ew', padx=5)
         
-        self.ai_stats_container = ttk.Frame(ai_stats_frame)
-        self.ai_stats_container.pack(fill='x', padx=10, pady=10)
+        # Type
+        ttk.Label(parent, text="Type:", font=('Segoe UI', 12, 'bold')).grid(row=3, column=0, sticky='w', pady=5)
+        type_var = tk.StringVar(value="limit")
+        setattr(self, f"{side}_type_var", type_var)
+        ttk.Combobox(parent, textvariable=type_var, 
+                    values=["limit", "market"]).grid(row=3, column=1, sticky='ew', padx=5)
         
-        self.ai_stats = {}
-        ai_stat_items = [
-            ("🎯 อัตราความแม่นยำ", "0%"),
-            ("💰 กำไรรวม", "0 THB"),
-            ("📈 เทรดสำเร็จ", "0"),
-            ("📉 เทรดล้มเหลว", "0"),
-            ("🔄 สถานะปัจจุบัน", "ปิด")
-        ]
+        parent.grid_columnconfigure(1, weight=1)
         
-        for i, (label, value) in enumerate(ai_stat_items):
-            row, col = i // 3, i % 3
-            stat_frame = ttk.Frame(self.ai_stats_container)
-            stat_frame.grid(row=row, column=col, padx=10, pady=5, sticky='ew')
+        # Submit button
+        btn_text = f"🟢 PLACE BUY ORDER" if side == 'buy' else "🔴 PLACE SELL ORDER"
+        command = self.place_buy_order if side == 'buy' else self.place_sell_order
+        
+        ttk.Button(parent, text=btn_text, 
+                  command=command).grid(row=4, column=0, columnspan=2, pady=20, sticky='ew')
+        
+    def setup_market_tab(self, notebook):
+        """Market data with real-time updates"""
+        market_frame = ttk.Frame(notebook)
+        notebook.add(market_frame, text="📈 Market Data")
+        
+        # Symbol selection and controls
+        control_frame = ttk.LabelFrame(market_frame, text="🎯 Market Controls", padding=10)
+        control_frame.pack(fill='x', padx=10, pady=10)
+        
+        control_inner = ttk.Frame(control_frame)
+        control_inner.pack(fill='x')
+        
+        ttk.Label(control_inner, text="Symbol:", font=('Segoe UI', 12, 'bold')).pack(side='left')
+        self.market_symbol_var = tk.StringVar(value="btc_thb")
+        symbol_combo = ttk.Combobox(control_inner, textvariable=self.market_symbol_var, 
+                                   values=["btc_thb", "eth_thb", "ada_thb", "dot_thb", "xrp_thb"])
+        symbol_combo.pack(side='left', padx=10)
+        
+        ttk.Button(control_inner, text="📊 Get Ticker",
+                  command=self.get_ticker).pack(side='left', padx=5)
+        ttk.Button(control_inner, text="📋 Orderbook",
+                  command=self.get_orderbook).pack(side='left', padx=5)
+        
+        # Market data display
+        data_frame = ttk.LabelFrame(market_frame, text="📊 Live Market Data", padding=10)
+        data_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        self.market_text = scrolledtext.ScrolledText(data_frame, bg='#1e1e1e', fg='#00d4aa',
+                                                   font=('Consolas', 11))
+        self.market_text.pack(fill='both', expand=True)
+        
+    def setup_portfolio_tab(self, notebook):
+        """Portfolio management and tracking"""
+        portfolio_frame = ttk.Frame(notebook)
+        notebook.add(portfolio_frame, text="💼 Portfolio")
+        
+        # Portfolio overview
+        overview_frame = ttk.LabelFrame(portfolio_frame, text="💰 Portfolio Overview", padding=10)
+        overview_frame.pack(fill='x', padx=10, pady=10)
+        
+        # Balance cards
+        balance_frame = ttk.Frame(overview_frame)
+        balance_frame.pack(fill='x')
+        
+        self.balance_cards = {}
+        currencies = ["THB", "BTC", "ETH", "Total Value"]
+        
+        for i, currency in enumerate(currencies):
+            card = ttk.Frame(balance_frame, relief='solid')
+            card.grid(row=0, column=i, padx=10, pady=5, sticky='ew')
+            balance_frame.grid_columnconfigure(i, weight=1)
             
-            ttk.Label(stat_frame, text=label).pack()
-            self.ai_stats[label] = ttk.Label(stat_frame, text=value, style='Header.TLabel')
-            self.ai_stats[label].pack()
+            ttk.Label(card, text=f"💰 {currency}", font=('Segoe UI', 12, 'bold')).pack(pady=2)
+            self.balance_cards[currency] = ttk.Label(card, text="Loading...", 
+                                                   font=('Segoe UI', 16, 'bold'))
+            self.balance_cards[currency].pack(pady=2)
         
-        for i in range(3):
-            self.ai_stats_container.grid_columnconfigure(i, weight=1)
+        # Portfolio actions
+        actions_frame = ttk.Frame(overview_frame)
+        actions_frame.pack(fill='x', pady=(10, 0))
         
-        # AI Log
-        ai_log_frame = ttk.LabelFrame(frame, text="🤖 AI Trading Log")
-        ai_log_frame.pack(fill='both', expand=True, padx=20, pady=20)
+        ttk.Button(actions_frame, text="🔄 Refresh Portfolio",
+                  command=self.refresh_portfolio).pack(side='left', padx=5)
+        ttk.Button(actions_frame, text="📊 Get Full Balances",
+                  command=self.get_balances).pack(side='left', padx=5)
         
-        self.ai_log = scrolledtext.ScrolledText(ai_log_frame, height=12, 
-                                              bg='#1e1e1e', fg='#00d4aa', 
-                                              font=('Consolas', 10))
-        self.ai_log.pack(fill='both', expand=True, padx=10, pady=10)
+        # Portfolio details
+        details_frame = ttk.LabelFrame(portfolio_frame, text="📊 Detailed Information", padding=10)
+        details_frame.pack(fill='both', expand=True, padx=10, pady=10)
         
-    def create_manual_trading_tab(self, notebook):
-        """แท็บ Manual Trading"""
-        frame = ttk.Frame(notebook)
-        notebook.add(frame, text="💰 Manual Trading")
-        
-        # ส่วนกลาง - ฟอร์มการซื้อขาย
-        trading_container = ttk.Frame(frame)
-        trading_container.pack(fill='both', expand=True, padx=20, pady=20)
-        
-        # ฟอร์มซื้อ
-        buy_frame = ttk.LabelFrame(trading_container, text="🟢 คำสั่งซื้อ")
-        buy_frame.pack(side='left', fill='both', expand=True, padx=(0, 10))
-        
-        self.create_trading_form(buy_frame, "buy")
-        
-        # ฟอร์มขาย
-        sell_frame = ttk.LabelFrame(trading_container, text="🔴 คำสั่งขาย")
-        sell_frame.pack(side='right', fill='both', expand=True, padx=(10, 0))
-        
-        self.create_trading_form(sell_frame, "sell")
-        
-        # ผลลัพธ์การเทรด
-        result_frame = ttk.LabelFrame(frame, text="📊 ผลลัพธ์การเทรด")
-        result_frame.pack(fill='both', expand=True, padx=20, pady=20)
-        
-        self.trading_result = scrolledtext.ScrolledText(result_frame, height=10, 
-                                                      bg='#1e1e1e', fg='#ffffff', 
+        self.portfolio_text = scrolledtext.ScrolledText(details_frame, bg='#1e1e1e', fg='#ffffff',
                                                       font=('Consolas', 10))
-        self.trading_result.pack(fill='both', expand=True, padx=10, pady=10)
+        self.portfolio_text.pack(fill='both', expand=True)
         
-    def create_trading_form(self, parent, side):
-        """สร้างฟอร์มการเทรด"""
-        form_frame = ttk.Frame(parent)
-        form_frame.pack(fill='both', expand=True, padx=10, pady=10)
+    def setup_orders_tab(self, notebook):
+        """Order management with advanced features"""
+        orders_frame = ttk.Frame(notebook)
+        notebook.add(orders_frame, text="📋 Order Management")
         
-        # การตั้งค่าฟอร์ม
-        fields = [
-            ("Symbol:", f"{side}_symbol_var", "btc_thb", "combo"),
-            ("จำนวน:", f"{side}_amount_var", "", "entry"),
-            ("ราคา:", f"{side}_rate_var", "", "entry"),
-            ("ประเภท:", f"{side}_type_var", "limit", "combo")
-        ]
+        # Order controls
+        control_frame = ttk.LabelFrame(orders_frame, text="🎛️ Order Controls", padding=10)
+        control_frame.pack(fill='x', padx=10, pady=10)
         
-        vars_dict = {}
-        for i, (label, var_name, default, widget_type) in enumerate(fields):
-            ttk.Label(form_frame, text=label, style='Header.TLabel').grid(
-                row=i, column=0, sticky='w', pady=5)
-            
-            var = tk.StringVar(value=default)
-            vars_dict[var_name] = var
-            
-            if widget_type == "combo":
-                if "symbol" in var_name:
-                    values = ["btc_thb", "eth_thb", "ada_thb"]
-                else:  # type
-                    values = ["limit", "market"]
-                widget = ttk.Combobox(form_frame, textvariable=var, values=values, state='readonly')
-            else:  # entry
-                widget = ttk.Entry(form_frame, textvariable=var)
-            
-            widget.grid(row=i, column=1, padx=10, pady=5, sticky='ew')
+        control_inner = ttk.Frame(control_frame)
+        control_inner.pack(fill='x')
         
-        form_frame.grid_columnconfigure(1, weight=1)
+        ttk.Label(control_inner, text="Symbol:", font=('Segoe UI', 12, 'bold')).pack(side='left')
+        self.order_symbol_var = tk.StringVar(value="btc_thb")
+        ttk.Combobox(control_inner, textvariable=self.order_symbol_var, 
+                    values=["btc_thb", "eth_thb", "ada_thb"]).pack(side='left', padx=10)
         
-        # เก็บตัวแปรไว้ใช้
-        setattr(self, f'{side}_vars', vars_dict)
+        ttk.Button(control_inner, text="📋 Open Orders",
+                  command=self.get_open_orders).pack(side='left', padx=5)
         
-        # ปุ่มส่งคำสั่ง
-        btn_text = "🟢 สั่งซื้อ" if side == 'buy' else "🔴 สั่งขาย"
-        command = lambda: self.place_order(side)
+        # Order information display
+        info_frame = ttk.LabelFrame(orders_frame, text="📊 Order Information", padding=10)
+        info_frame.pack(fill='both', expand=True, padx=10, pady=10)
         
-        submit_btn = ttk.Button(form_frame, text=btn_text, command=command)
-        submit_btn.grid(row=len(fields), column=0, columnspan=2, pady=20, sticky='ew')
+        self.order_text = scrolledtext.ScrolledText(info_frame, bg='#1e1e1e', fg='#ffffff',
+                                                  font=('Consolas', 10))
+        self.order_text.pack(fill='both', expand=True)
         
-    def create_portfolio_tab(self, notebook):
-        """แท็บ Portfolio"""
-        frame = ttk.Frame(notebook)
-        notebook.add(frame, text="💼 Portfolio")
-        
-        # ข้อความแสดงสถานะ
-        ttk.Label(frame, text="💼 Portfolio Management", 
-                 style='Title.TLabel').pack(pady=50)
-        ttk.Label(frame, text="ฟีเจอร์นี้จะพัฒนาในเวอร์ชันต่อไป", 
-                 style='Header.TLabel').pack()
-        
-    def create_market_data_tab(self, notebook):
-        """แท็บ Market Data"""
-        frame = ttk.Frame(notebook)
-        notebook.add(frame, text="📈 Market Data")
-        
-        # ข้อความแสดงสถานะ
-        ttk.Label(frame, text="📈 Market Data Analysis", 
-                 style='Title.TLabel').pack(pady=50)
-        ttk.Label(frame, text="ฟีเจอร์นี้จะพัฒนาในเวอร์ชันต่อไป", 
-                 style='Header.TLabel').pack()
-        
-    def create_settings_tab(self, notebook):
-        """แท็บการตั้งค่า"""
-        frame = ttk.Frame(notebook)
-        notebook.add(frame, text="⚙️ ตั้งค่า")
-        
-        # การตั้งค่าทั่วไป
-        general_frame = ttk.LabelFrame(frame, text="🔧 การตั้งค่าทั่วไป")
-        general_frame.pack(fill='x', padx=20, pady=20)
-        
-        general_container = ttk.Frame(general_frame)
-        general_container.pack(fill='x', padx=10, pady=10)
-        
-        # การตั้งค่าต่างๆ
-        self.setting_vars = {}
-        settings = [
-            ("🔔 แจ้งเตือนเสียง", "sound_notifications", True, "checkbox"),
-            ("🔄 อัพเดทราคาทุก (วินาที)", "price_update_interval", "30", "entry"),
-            ("📊 จำนวนข้อมูลราคาที่เก็บ", "price_history_size", "200", "entry"),
-        ]
-        
-        for i, (label, var_name, default, widget_type) in enumerate(settings):
-            ttk.Label(general_container, text=label, style='Header.TLabel').grid(
-                row=i, column=0, sticky='w', padx=10, pady=5)
-            
-            if widget_type == "checkbox":
-                var = tk.BooleanVar(value=default)
-                widget = ttk.Checkbutton(general_container, variable=var)
-            else:  # entry
-                var = tk.StringVar(value=str(default))
-                widget = ttk.Entry(general_container, textvariable=var, width=20)
-            
-            self.setting_vars[var_name] = var
-            widget.grid(row=i, column=1, padx=10, pady=5, sticky='w')
-        
-    def create_status_bar(self, parent):
-        """สร้าง Status Bar"""
+    def setup_status_bar(self, parent):
+        """Modern status bar"""
         status_frame = ttk.Frame(parent)
         status_frame.pack(side='bottom', fill='x', pady=(10, 0))
         
-        # สถานะหลัก
         self.status_var = tk.StringVar()
-        self.status_var.set("🟢 พร้อมใช้งาน")
+        self.status_var.set("🟢 Ready - Bitkub AI Trading Bot")
         status_label = ttk.Label(status_frame, textvariable=self.status_var, relief='sunken')
         status_label.pack(side='left', fill='x', expand=True)
         
-        # แสดงเวลา
-        self.time_var = tk.StringVar()
-        time_label = ttk.Label(status_frame, textvariable=self.time_var, relief='sunken')
-        time_label.pack(side='right', padx=5)
+        # Connection indicator
+        self.connection_indicator = ttk.Label(status_frame, text="⚫ Disconnected")
+        self.connection_indicator.pack(side='right', padx=10)
         
-        # อัพเดทเวลา
-        self.update_time()
-        
-    def update_time(self):
-        """อัพเดทเวลาใน Status Bar"""
-        current_time = datetime.now().strftime("%H:%M:%S")
-        self.time_var.set(f"🕐 {current_time}")
-        self.root.after(1000, self.update_time)
+    # === API และ Trading Functions ===
     
-    # === ฟังก์ชันการทำงานหลัก ===
-    
-    def log_message(self, message, log_type="INFO"):
-        """บันทึก Log"""
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        icons = {
-            "INFO": "ℹ️", "SUCCESS": "✅", "WARNING": "⚠️", 
-            "ERROR": "❌", "TRADE": "📈", "API": "🔗"
-        }
-        icon = icons.get(log_type, "ℹ️")
-        
-        log_entry = f"[{timestamp}] {icon} {message}\n"
-        
-        # บันทึกใน GUI
-        if hasattr(self, 'log_text'):
-            self.log_text.insert(tk.END, log_entry)
-            self.log_text.see(tk.END)
-            
-            # จำกัดจำนวนบรรทัดใน log
-            lines = self.log_text.get('1.0', tk.END).split('\n')
-            if len(lines) > 1000:
-                self.log_text.delete('1.0', f'{len(lines)-1000}.0')
-        
-        # บันทึกใน file
-        self.logger.info(f"{log_type}: {message}")
-        
-        # อัพเดท Status
-        if hasattr(self, 'status_var'):
-            self.status_var.set(f"🟢 {message[:60]}...")
-    
-    def log_ai_message(self, message):
-        """บันทึก AI Log"""
-        timestamp = datetime.now().strftime("%H:%M:%S")
+    def log_message(self, message):
+        """Enhanced logging with colors and formatting"""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_entry = f"[{timestamp}] {message}\n"
+        self.log_text.insert(tk.END, log_entry)
+        self.log_text.see(tk.END)
         
-        if hasattr(self, 'ai_log'):
-            self.ai_log.insert(tk.END, log_entry)
-            self.ai_log.see(tk.END)
-            
-            # จำกัดจำนวนบรรทัด
-            lines = self.ai_log.get('1.0', tk.END).split('\n')
-            if len(lines) > 500:
-                self.ai_log.delete('1.0', f'{len(lines)-500}.0')
+        # Also update status bar
+        self.update_status(f"Last action: {message[:50]}...")
+        
+    def update_status(self, message):
+        """Update status bar with icon"""
+        self.status_var.set(f"🟢 {message}")
+        self.root.update_idletasks()
     
+    def toggle_api_visibility(self):
+        """Toggle API credentials visibility"""
+        if self.api_key_entry.cget('show') == '*':
+            self.api_key_entry.configure(show='')
+            self.api_secret_entry.configure(show='')
+        else:
+            self.api_key_entry.configure(show='*')
+            self.api_secret_entry.configure(show='*')
+        
     def save_api_config(self):
-        """บันทึกการตั้งค่า API"""
+        """Save API configuration with validation"""
         api_key = self.api_key_entry.get().strip()
         api_secret = self.api_secret_entry.get().strip()
         
-        if not api_key or not api_secret:
-            messagebox.showerror("ข้อผิดพลาด", "กรุณากรอก API Key และ Secret")
-            return
-        
-        # สร้าง API Client
-        self.api_client = BitkubAPIClient(api_key, api_secret)
-        
-        # บันทึกในไฟล์ config
-        self.config['API'] = {
-            'key_hash': hashlib.sha256(api_key.encode()).hexdigest()[:16],
-            'configured': 'True'
-        }
-        self.save_configuration()
-        
-        self.log_message("บันทึกการตั้งค่า API สำเร็จ", "SUCCESS")
-        self.header_stats["การเชื่อมต่อ"].configure(text="🟡 กำลังทดสอบ...")
-        
-        # ทดสอบการเชื่อมต่อใน background
-        threading.Thread(target=self.test_api_connection, daemon=True).start()
+        if api_key and api_secret:
+            # สร้าง API Client ใหม่
+            self.api_client = BitkubAPIClient(api_key, api_secret)
+            
+            self.log_message("✅ API configuration saved successfully")
+            self.connection_status.configure(text="🟡 Configured - Testing...")
+            self.connection_indicator.configure(text="🟡 Testing")
+            
+            # Test connection automatically
+            threading.Thread(target=self.test_api_connection, daemon=True).start()
+        else:
+            messagebox.showwarning("Warning", "Please enter both API Key and Secret")
     
     def test_api_connection(self):
-        """ทดสอบการเชื่อมต่อ API"""
-        if not self.api_client:
-            self.update_connection_status("🔴 ไม่มี API Config")
-            return
-        
-        try:
-            self.log_message("🔍 เริ่มทดสอบการเชื่อมต่อ API...", "API")
-            
-            # ทดสอบ Public API
-            public_result = self.api_client.make_public_request('/api/v3/servertime')
-            
-            if not public_result:
-                self.update_connection_status("🔴 Public API ล้มเหลว")
-                return
-            
-            self.log_message("✅ Public API ทำงานปกติ", "SUCCESS")
-            
-            # ทดสอบ Private API
-            private_result = self.api_client.make_private_request('POST', '/api/v3/market/wallet')
-            
-            if private_result and private_result.get('error') == 0:
-                wallet_data = private_result.get('result', {})
-                thb_balance = wallet_data.get('THB', 0)
-                
-                self.update_connection_status("🟢 เชื่อมต่อสำเร็จ")
-                self.log_message("✅ ทดสอบการเชื่อมต่อ API สำเร็จ!", "SUCCESS")
-                self.log_message(f"💰 ยอดเงิน THB: {thb_balance:,.2f}", "SUCCESS")
-                
-                # อัพเดทข้อมูลใน header
-                if "💰 ยอดเงิน (THB)" in self.stats_cards:
-                    self.stats_cards["💰 ยอดเงิน (THB)"].configure(text=f"{thb_balance:,.2f}")
-                
-                messagebox.showinfo("สำเร็จ", "🎉 เชื่อมต่อ API สำเร็จ!")
-                
-            else:
-                error_code = private_result.get('error', 'ไม่ทราบ') if private_result else 'ไม่มีการตอบกลับ'
-                self.update_connection_status("🔴 Authentication ล้มเหลว")
-                self.log_message(f"❌ API Error Code: {error_code}", "ERROR")
-                
-        except Exception as e:
-            self.update_connection_status("🔴 ข้อผิดพลาด")
-            self.log_message(f"❌ ข้อผิดพลาดในการทดสอบ: {str(e)}", "ERROR")
-    
-    def update_connection_status(self, status_text):
-        """อัพเดทสถานะการเชื่อมต่อ"""
-        if hasattr(self, 'header_stats'):
-            self.header_stats["การเชื่อมต่อ"].configure(text=status_text)
-        
-        if hasattr(self, 'connection_status'):
-            self.connection_status.configure(text=status_text)
-    
-    def start_price_monitoring(self):
-        """เริ่มต้นการติดตามราคา"""
-        def monitor():
-            while True:
-                try:
-                    if not self.api_client:
-                        time.sleep(60)
-                        continue
-                    
-                    # ดึงราคา BTC
-                    ticker = self.api_client.make_public_request('/api/v3/market/ticker', {'sym': 'btc_thb'})
-                    if ticker and len(ticker) > 0:
-                        price_data = ticker[0]
-                        current_price = float(price_data['last'])
-                        
-                        # เก็บข้อมูลราคา
-                        self.price_history.append(current_price)
-                    
-                    time.sleep(30)  # อัพเดททุก 30 วินาที
-                    
-                except Exception as e:
-                    self.log_message(f"ข้อผิดพลาดในการติดตามราคา: {str(e)}", "ERROR")
-                    time.sleep(60)
-        
-        # เริ่ม thread
-        monitoring_thread = threading.Thread(target=monitor, daemon=True)
-        monitoring_thread.start()
-        self.log_message("เริ่มการติดตามราคาแล้ว", "SUCCESS")
-    
-    def toggle_ai_trading(self):
-        """เปิด/ปิด AI Trading"""
-        if not self.ai_enabled:
-            # ตรวจสอบข้อกำหนดก่อนเริ่ม
+        """Test API connection with comprehensive checks"""
+        def test():
             if not self.api_client:
-                messagebox.showerror("ข้อผิดพลาด", "กรุณาตั้งค่าและทดสอบ API ก่อน!")
+                self.connection_status.configure(text="🔴 No API Configuration")
+                self.connection_indicator.configure(text="🔴 No Config")
                 return
             
-            # ตรวจสอบการตั้งค่า
-            try:
-                amount = float(self.ai_vars["ai_amount_var"].get())
-                max_trades = int(self.ai_vars["ai_max_trades_var"].get())
-                
-                if amount <= 0 or max_trades <= 0:
-                    raise ValueError("ค่าต้องมากกว่า 0")
-                    
-            except ValueError as e:
-                messagebox.showerror("ข้อผิดพลาด", f"การตั้งค่าไม่ถูกต้อง: {str(e)}")
-                return
+            # Test API connection
+            success = self.api_client.test_connection()
             
-            # ยืนยันการเริ่ม AI Trading
-            if not messagebox.askyesno("ยืนยันการเริ่ม AI Trading", 
-                                     f"🤖 เริ่ม AI Trading?\n\n"
-                                     f"Symbol: {self.ai_vars['ai_symbol_var'].get().upper()}\n"
-                                     f"กลยุทธ์: {self.ai_vars['ai_strategy_var'].get()}\n"
-                                     f"จำนวนเงิน: {amount:,.2f} THB ต่อเทรด\n"
-                                     f"ความเสี่ยง: {self.ai_vars['ai_risk_var'].get()}\n\n"
-                                     f"⚠️ การเทรดมีความเสี่ยง คุณอาจสูญเสียเงินได้"):
-                return
-            
-            self.start_ai_trading()
-        else:
-            self.stop_ai_trading()
-    
-    def start_ai_trading(self):
-        """เริ่ม AI Trading"""
-        self.ai_enabled = True
-        self.stop_trading = False
-        
-        # อัพเดท UI
-        self.ai_start_button.configure(text="🛑 หยุด AI Trading")
-        self.quick_start_btn.configure(text="🛑 หยุด AI")
-        self.header_stats["AI Trading"].configure(text="🟢 เปิด")
-        self.ai_stats["🔄 สถานะปัจจุบัน"].configure(text="🟢 ทำงาน")
-        
-        # เริ่ม AI Trading Thread
-        self.ai_trading_thread = threading.Thread(target=self.ai_trading_loop, daemon=True)
-        self.ai_trading_thread.start()
-        
-        self.log_ai_message("🚀 เริ่ม AI Trading!")
-        self.log_message("AI Trading เริ่มทำงานแล้ว", "SUCCESS")
-    
-    def stop_ai_trading(self):
-        """หยุด AI Trading"""
-        self.ai_enabled = False
-        self.stop_trading = True
-        
-        # อัพเดท UI
-        self.ai_start_button.configure(text="🚀 เริ่ม AI Trading")
-        self.quick_start_btn.configure(text="🚀 เริ่ม AI")
-        self.header_stats["AI Trading"].configure(text="🔴 ปิด")
-        self.ai_stats["🔄 สถานะปัจจุบัน"].configure(text="🔴 หยุด")
-        
-        self.log_ai_message("🛑 หยุด AI Trading!")
-        self.log_message("AI Trading หยุดทำงานแล้ว", "SUCCESS")
-    
-    def ai_trading_loop(self):
-        """ลูปการทำงานของ AI Trading"""
-        trades_this_hour = 0
-        hour_start = time.time()
-        
-        while self.ai_enabled and not self.stop_trading:
-            try:
-                current_time = time.time()
-                
-                # รีเซ็ตนับเทรดต่อชั่วโมง
-                if current_time - hour_start > 3600:
-                    trades_this_hour = 0
-                    hour_start = current_time
-                
-                # ตรวจสอบข้อจำกัดการเทรด
-                max_trades = int(self.ai_vars["ai_max_trades_var"].get())
-                if trades_this_hour >= max_trades:
-                    self.log_ai_message(f"⏳ ถึงขีดจำกัดการเทรดต่อชั่วโมง ({max_trades})")
-                    time.sleep(300)  # รอ 5 นาที
-                    continue
-                
-                # ตรวจสอบข้อมูลราคา
-                if len(self.price_history) < 20:
-                    self.log_ai_message("⏳ รอข้อมูลราคาเพิ่มเติม...")
-                    time.sleep(30)
-                    continue
-                
-                # สร้างสัญญาณการเทรด
-                signal = self.generate_trading_signal()
-                
-                if signal and signal['action'] != 'hold' and signal['confidence'] > 0.6:
-                    if self.execute_ai_trade(signal):
-                        trades_this_hour += 1
-                        self.total_trades += 1
-                        self.update_ai_statistics()
-                
-                # รอก่อนตรวจสอบครั้งต่อไป
-                time.sleep(60)
-                
-            except Exception as e:
-                self.log_ai_message(f"❌ ข้อผิดพลาดใน AI: {str(e)}")
-                time.sleep(120)
-    
-    def generate_trading_signal(self):
-        """สร้างสัญญาณการเทรด"""
-        try:
-            strategy = self.ai_vars["ai_strategy_var"].get()
-            current_price = self.price_history[-1]
-            prices = list(self.price_history)
-            
-            if strategy == "momentum":
-                signal = TradingStrategy.momentum_strategy(prices, current_price)
-            elif strategy == "bollinger_bands":
-                signal = TradingStrategy.bollinger_bands_strategy(prices, current_price)
-            elif strategy == "hybrid":
-                # รวมหลายกลยุทธ์
-                momentum_signal = TradingStrategy.momentum_strategy(prices, current_price)
-                bb_signal = TradingStrategy.bollinger_bands_strategy(prices, current_price)
-                
-                total_confidence = (momentum_signal['confidence'] + bb_signal['confidence']) / 2
-                
-                if momentum_signal['action'] == bb_signal['action'] and momentum_signal['action'] != 'hold':
-                    signal = {
-                        'action': momentum_signal['action'],
-                        'confidence': min(0.9, total_confidence * 1.2),
-                        'reason': f"Hybrid: {momentum_signal['reason']} + {bb_signal['reason']}"
-                    }
-                else:
-                    signal = {
-                        'action': 'hold',
-                        'confidence': 0.3,
-                        'reason': "สัญญาณขัดแย้งกัน"
-                    }
+            if success:
+                self.connection_status.configure(text="🟢 Connected & Authenticated")
+                self.connection_indicator.configure(text="🟢 Connected")
+                self.stats_labels["🤖 Connection"].configure(text="Online")
+                self.log_message("✅ API connection test successful!")
+                messagebox.showinfo("Success", "🎉 API connection successful!\nReady for trading.")
             else:
-                signal = {'action': 'hold', 'confidence': 0, 'reason': 'ไม่ทราบกลยุทธ์'}
-            
-            # ปรับคะแนนตามระดับความเสี่ยง
-            risk_level = self.ai_vars["ai_risk_var"].get()
-            risk_adjustments = {"low": 0.7, "medium": 1.0, "high": 1.3}
-            signal['confidence'] *= risk_adjustments.get(risk_level, 1.0)
-            signal['confidence'] = min(0.95, signal['confidence'])
-            
-            self.log_ai_message(f"📊 สัญญาณ: {signal['action']} (มั่นใจ: {signal['confidence']:.2f}) - {signal['reason']}")
-            
-            return signal
-            
-        except Exception as e:
-            self.log_ai_message(f"❌ ข้อผิดพลาดในการสร้างสัญญาณ: {str(e)}")
-            return None
-    
-    def execute_ai_trade(self, signal):
-        """ดำเนินการเทรดโดย AI"""
-        try:
-            symbol = self.ai_vars["ai_symbol_var"].get()
-            base_amount = float(self.ai_vars["ai_amount_var"].get())
-            
-            # ปรับจำนวนตามความมั่นใจ
-            adjusted_amount = base_amount * signal['confidence']
-            
-            if signal['action'] == 'buy':
-                return self.ai_place_buy_order(symbol, adjusted_amount, signal)
-            elif signal['action'] == 'sell':
-                return self.ai_place_sell_order(symbol, adjusted_amount, signal)
-            
-            return False
-            
-        except Exception as e:
-            self.log_ai_message(f"❌ ข้อผิดพลาดในการดำเนินการเทรด: {str(e)}")
-            return False
-    
-    def ai_place_buy_order(self, symbol, amount, signal):
-        """สั่งซื้อโดย AI"""
-        try:
-            # ตรวจสอบยอดเงิน
-            wallet = self.api_client.make_private_request('POST', '/api/v3/market/wallet')
-            if not wallet or wallet.get('error') != 0:
-                self.log_ai_message("❌ ไม่สามารถตรวจสอบยอดเงินได้")
-                return False
-            
-            thb_balance = wallet.get('result', {}).get('THB', 0)
-            if thb_balance < amount:
-                self.log_ai_message(f"❌ ยอดเงินไม่เพียงพอ: มี {thb_balance:,.2f} ต้องการ {amount:,.2f}")
-                return False
-            
-            # สั่งซื้อแบบ market order
-            body = {
-                'sym': symbol,
-                'amt': amount,
-                'rat': 0,  # Market order
-                'typ': 'market'
-            }
-            
-            result = self.api_client.make_private_request('POST', '/api/v3/market/place-bid', body=body)
-            
-            if result and result.get('error') == 0:
-                self.successful_trades += 1
-                order_id = result.get('result', {}).get('id', 'N/A')
+                self.connection_status.configure(text="🔴 Connection Failed")
+                self.connection_indicator.configure(text="🔴 Failed")
+                self.stats_labels["🤖 Connection"].configure(text="Offline")
                 
-                self.log_ai_message(f"✅ AI ซื้อสำเร็จ: {amount:,.2f} THB ของ {symbol.upper()}")
-                self.log_ai_message(f"📋 Order ID: {order_id}")
-                self.log_message(f"AI Trade: BUY {amount:,.2f} THB of {symbol.upper()}", "TRADE")
-                
-                return True
-            else:
-                self.failed_trades += 1
-                error = result.get('error', 'Unknown') if result else 'No response'
-                self.log_ai_message(f"❌ AI ซื้อล้มเหลว: Error {error}")
-                return False
-                
-        except Exception as e:
-            self.failed_trades += 1
-            self.log_ai_message(f"❌ ข้อผิดพลาดในการซื้อ: {str(e)}")
-            return False
-    
-    def ai_place_sell_order(self, symbol, amount, signal):
-        """สั่งขายโดย AI"""
-        try:
-            # ตรวจสอบยอดคริปโต
-            wallet = self.api_client.make_private_request('POST', '/api/v3/market/wallet')
-            if not wallet or wallet.get('error') != 0:
-                self.log_ai_message("❌ ไม่สามารถตรวจสอบยอดเงินได้")
-                return False
-            
-            crypto_symbol = symbol.split('_')[0].upper()
-            crypto_balance = wallet.get('result', {}).get(crypto_symbol, 0)
-            
-            if crypto_balance <= 0:
-                self.log_ai_message(f"❌ ไม่มี {crypto_symbol} ให้ขาย")
-                return False
-            
-            # คำนวณจำนวนที่จะขาย (ไม่เกิน 20% ของที่มี)
-            current_price = self.price_history[-1]
-            max_sell_amount = crypto_balance * 0.2
-            target_sell_amount = amount / current_price
-            
-            sell_amount = min(max_sell_amount, target_sell_amount, crypto_balance)
-            
-            if sell_amount < 0.00001:  # จำนวนน้อยเกินไป
-                self.log_ai_message(f"❌ จำนวนขายน้อยเกินไป: {sell_amount:.8f}")
-                return False
-            
-            # สั่งขายแบบ market order
-            body = {
-                'sym': symbol,
-                'amt': sell_amount,
-                'rat': 0,  # Market order
-                'typ': 'market'
-            }
-            
-            result = self.api_client.make_private_request('POST', '/api/v3/market/place-ask', body=body)
-            
-            if result and result.get('error') == 0:
-                self.successful_trades += 1
-                order_id = result.get('result', {}).get('id', 'N/A')
-                
-                self.log_ai_message(f"✅ AI ขายสำเร็จ: {sell_amount:.8f} {crypto_symbol}")
-                self.log_ai_message(f"📋 Order ID: {order_id}")
-                self.log_message(f"AI Trade: SELL {sell_amount:.8f} {crypto_symbol}", "TRADE")
-                
-                return True
-            else:
-                self.failed_trades += 1
-                error = result.get('error', 'Unknown') if result else 'No response'
-                self.log_ai_message(f"❌ AI ขายล้มเหลว: Error {error}")
-                return False
-                
-        except Exception as e:
-            self.failed_trades += 1
-            self.log_ai_message(f"❌ ข้อผิดพลาดในการขาย: {str(e)}")
-            return False
-    
-    def update_ai_statistics(self):
-        """อัพเดทสถิติ AI Trading"""
-        try:
-            total_trades = self.successful_trades + self.failed_trades
-            success_rate = (self.successful_trades / max(total_trades, 1)) * 100
-            
-            # อัพเดท GUI
-            self.ai_stats["🎯 อัตราความแม่นยำ"].configure(text=f"{success_rate:.1f}%")
-            self.ai_stats["📈 เทรดสำเร็จ"].configure(text=str(self.successful_trades))
-            self.ai_stats["📉 เทรดล้มเหลว"].configure(text=str(self.failed_trades))
-            
-            # อัพเดท header stats
-            self.header_stats["จำนวนเทรด"].configure(text=str(total_trades))
-            
-            self.log_message(f"สถิติ AI: สำเร็จ {self.successful_trades}/{total_trades} ({success_rate:.1f}%)", "INFO")
-            
-        except Exception as e:
-            self.log_message(f"ข้อผิดพลาดในการอัพเดทสถิติ: {str(e)}", "ERROR")
-    
-    # === ฟังก์ชันสำหรับ Manual Trading ===
-    
-    def place_order(self, side):
-        """วางคำสั่งซื้อ/ขาย (Manual)"""
-        try:
-            if not self.api_client:
-                messagebox.showerror("ข้อผิดพลาด", "กรุณาตั้งค่า API ก่อน")
-                return
-            
-            vars_dict = getattr(self, f'{side}_vars')
-            
-            symbol = vars_dict[f'{side}_symbol_var'].get()
-            amount = float(vars_dict[f'{side}_amount_var'].get())
-            rate = float(vars_dict[f'{side}_rate_var'].get()) if vars_dict[f'{side}_rate_var'].get() else 0
-            order_type = vars_dict[f'{side}_type_var'].get()
-            
-            if amount <= 0:
-                messagebox.showerror("ข้อผิดพลาด", "จำนวนต้องมากกว่า 0")
-                return
-            
-            # ยืนยันการสั่งซื้อ/ขาย
-            if not messagebox.askyesno("ยืนยันการสั่ง" + ("ซื้อ" if side == 'buy' else "ขาย"), 
-                                     f"{'🟢 สั่งซื้อ' if side == 'buy' else '🔴 สั่งขาย'} {symbol.upper()}\n\n"
-                                     f"จำนวน: {amount:,.2f} {'THB' if side == 'buy' else symbol.split('_')[0].upper()}\n"
-                                     f"ราคา: {rate:,.2f}\n"
-                                     f"ประเภท: {order_type.upper()}\n\n"
-                                     f"ยืนยันการดำเนินการ?"):
-                return
-            
-            # ดำเนินการสั่งซื้อ/ขาย
-            threading.Thread(target=self._execute_manual_order, 
-                           args=(side, symbol, amount, rate, order_type), daemon=True).start()
-            
-        except ValueError:
-            messagebox.showerror("ข้อผิดพลาด", "กรุณากรอกตัวเลขที่ถูกต้อง")
-        except Exception as e:
-            messagebox.showerror("ข้อผิดพลาด", f"เกิดข้อผิดพลาด: {str(e)}")
-    
-    def _execute_manual_order(self, side, symbol, amount, rate, order_type):
-        """ดำเนินการสั่งซื้อ/ขายใน background"""
-        try:
-            body = {
-                'sym': symbol,
-                'amt': amount,
-                'rat': rate,
-                'typ': order_type
-            }
-            
-            if side == 'buy':
-                result = self.api_client.make_private_request('POST', '/api/v3/market/place-bid', body=body)
-                action = "ซื้อ"
-                emoji = "🟢"
-            else:
-                result = self.api_client.make_private_request('POST', '/api/v3/market/place-ask', body=body)
-                action = "ขาย"
-                emoji = "🔴"
-            
-            if result:
-                # แสดงผลลัพธ์
-                timestamp = datetime.now().strftime("%H:%M:%S")
-                self.trading_result.insert(tk.END, f"\n{emoji} === ผลการ{action} [{timestamp}] ===\n")
-                self.trading_result.insert(tk.END, json.dumps(result, indent=2, ensure_ascii=False))
-                self.trading_result.insert(tk.END, f"\n{'='*60}\n")
-                self.trading_result.see(tk.END)
-                
-                if result.get('error') == 0:
-                    order_data = result.get('result', {})
-                    order_id = order_data.get('id', 'N/A')
-                    
-                    self.log_message(f"Manual Trade: {action} {amount:,.2f} {symbol.upper()} - Order ID: {order_id}", "TRADE")
-                    messagebox.showinfo("สำเร็จ", f"🎉 {action}สำเร็จ!\nOrder ID: {order_id}")
-                    
-                    # ล้างฟอร์ม
-                    vars_dict = getattr(self, f'{side}_vars')
-                    vars_dict[f'{side}_amount_var'].set("")
-                    vars_dict[f'{side}_rate_var'].set("")
-                    
-                else:
-                    error_code = result.get('error')
-                    self.log_message(f"Manual Trade Failed: {action} - Error {error_code}", "ERROR")
-                    messagebox.showerror("ล้มเหลว", f"❌ {action}ล้มเหลว!\nError: {error_code}")
-            
-        except Exception as e:
-            self.log_message(f"Manual Trade Error: {str(e)}", "ERROR")
-            messagebox.showerror("ข้อผิดพลาด", f"เกิดข้อผิดพลาด: {str(e)}")
-    
-    # === ฟังก์ชันอื่นๆ ===
-    
-    def quick_start_ai(self):
-        """เริ่ม AI แบบด่วน"""
-        if not self.ai_enabled:
-            self.toggle_ai_trading()
-        else:
-            self.stop_ai_trading()
-    
-    def load_saved_settings(self):
-        """โหลดการตั้งค่าที่บันทึกไว้"""
-        try:
-            if 'API' in self.config and self.config['API'].get('configured') == 'True':
-                self.log_message("พบการตั้งค่า API ที่บันทึกไว้", "INFO")
-        except Exception as e:
-            self.log_message(f"ข้อผิดพลาดในการโหลดการตั้งค่า: {str(e)}", "ERROR")
-    
-    def save_all_settings(self):
-        """บันทึกการตั้งค่าทั้งหมด"""
-        try:
-            settings_to_save = {}
-            
-            if hasattr(self, 'setting_vars'):
-                for var_name, var in self.setting_vars.items():
-                    if isinstance(var, tk.BooleanVar):
-                        settings_to_save[var_name] = var.get()
-                    else:
-                        settings_to_save[var_name] = var.get()
-            
-            self.config['SETTINGS'] = settings_to_save
-            self.save_configuration()
-            
-            self.log_message("บันทึกการตั้งค่าทั้งหมดสำเร็จ", "SUCCESS")
-            messagebox.showinfo("สำเร็จ", "💾 บันทึกการตั้งค่าสำเร็จ!")
-            
-        except Exception as e:
-            self.log_message(f"ข้อผิดพลาดในการบันทึกการตั้งค่า: {str(e)}", "ERROR")
-            messagebox.showerror("ข้อผิดพลาด", f"ไม่สามารถบันทึกการตั้งค่าได้: {str(e)}")
-    
-    # === ฟังก์ชันที่ยังไม่ได้ implement (stub functions) ===
+        threading.Thread(target=test, daemon=True).start()
     
     def refresh_dashboard(self):
-        """รีเฟรชข้อมูลใน dashboard"""
-        self.log_message("กำลังรีเฟรช Dashboard...", "INFO")
-        # TODO: Implement dashboard refresh
+        """Refresh all dashboard data"""
+        self.update_status("Refreshing dashboard...")
+        
+        def refresh():
+            # Update metrics
+            self.update_price_metrics()
+            self.update_portfolio_metrics()
+            self.update_status("Dashboard refreshed")
+            
+        threading.Thread(target=refresh, daemon=True).start()
+    
+    def update_price_metrics(self):
+        """Update price metrics in dashboard"""
+        if not self.api_client:
+            return
+            
+        try:
+            btc_data = self.api_client.get_ticker('btc_thb')
+            eth_data = self.api_client.get_ticker('eth_thb')
+            
+            if btc_data and len(btc_data) > 0:
+                btc_price = f"{float(btc_data[0]['last']):,.0f} THB"
+                self.metric_cards["BTC Price"].configure(text=btc_price)
+                
+            if eth_data and len(eth_data) > 0:
+                eth_price = f"{float(eth_data[0]['last']):,.0f} THB"
+                self.metric_cards["ETH Price"].configure(text=eth_price)
+                
+        except Exception as e:
+            self.log_message(f"❌ Error updating price metrics: {str(e)}")
+    
+    def update_portfolio_metrics(self):
+        """Update portfolio value in dashboard"""
+        if not self.api_client:
+            return
+            
+        wallet = self.api_client.get_wallet()
+        if wallet and wallet.get('error') == 0:
+            balance_data = wallet.get('result', {})
+            total_thb = balance_data.get('THB', 0)
+            self.metric_cards["Portfolio Value"].configure(text=f"{total_thb:,.0f} THB")
+            self.stats_labels["💰 Balance"].configure(text=f"{total_thb:,.0f} THB")
     
     def quick_balance_check(self):
-        """ตรวจสอบยอดเงินแบบด่วน"""
+        """Quick balance check for dashboard"""
         if not self.api_client:
-            messagebox.showerror("ข้อผิดพลาด", "กรุณาตั้งค่า API ก่อน")
+            messagebox.showerror("Error", "Please configure API first!")
             return
+            
+        self.update_status("Checking balance...")
         
         def check():
-            wallet = self.api_client.make_private_request('POST', '/api/v3/market/wallet')
+            wallet = self.api_client.get_wallet()
             if wallet and wallet.get('error') == 0:
+                self.update_portfolio_metrics()
                 balance_data = wallet.get('result', {})
-                thb_balance = balance_data.get('THB', 0)
-                if "💰 ยอดเงิน (THB)" in self.stats_cards:
-                    self.stats_cards["💰 ยอดเงิน (THB)"].configure(text=f"{thb_balance:,.2f}")
-                messagebox.showinfo("ยอดเงิน", f"💰 ยอดเงิน THB: {thb_balance:,.2f}")
-        
+                
+                balance_text = "💰 Account Balances:\n\n"
+                for currency, amount in balance_data.items():
+                    if amount > 0:
+                        if currency == 'THB':
+                            balance_text += f"{currency}: {amount:,.2f}\n"
+                        else:
+                            balance_text += f"{currency}: {amount:.8f}\n"
+                
+                messagebox.showinfo("Balance", balance_text)
+            self.update_status("Ready")
+            
         threading.Thread(target=check, daemon=True).start()
     
-    def show_detailed_stats(self):
-        """แสดงสถิติโดยละเอียด"""
-        stats_window = tk.Toplevel(self.root)
-        stats_window.title("📊 สถิติโดยละเอียด")
-        stats_window.geometry("600x400")
-        stats_window.configure(bg='#2b2b2b')
-        
-        ttk.Label(stats_window, text="สถิติโดยละเอียดจะแสดงที่นี่", 
-                 style='Header.TLabel').pack(expand=True)
-
-
-# === ฟังก์ชันหลักของโปรแกรม ===
-def main():
-    """ฟังก์ชันหลัก"""
-    print("🚀 เริ่มต้น Bitkub AI Trading Bot Professional Edition...")
+    # Enhanced Trading Functions
+    def place_buy_order(self):
+        """Enhanced buy order placement with validation"""
+        try:
+            if not self.api_client:
+                messagebox.showerror("Error", "Please configure API first!")
+                return
+                
+            symbol = self.buy_symbol_var.get()
+            amount = float(self.buy_amount_var.get()) if self.buy_amount_var.get() else 0
+            rate = float(self.buy_rate_var.get()) if self.buy_rate_var.get() else 0
+            order_type = self.buy_type_var.get()
+            
+            if amount <= 0:
+                messagebox.showerror("Error", "❌ Amount must be greater than 0")
+                return
+            
+            # Confirmation dialog
+            if not messagebox.askyesno("Confirm Order", 
+                                     f"🟢 Place BUY order?\n\n"
+                                     f"Symbol: {symbol.upper()}\n"
+                                     f"Amount: {amount:,.2f} THB\n"
+                                     f"Rate: {rate:,.2f}\n"
+                                     f"Type: {order_type.upper()}"):
+                return
+            
+            self.update_status("Placing buy order...")
+            
+            def place():
+                result = self.api_client.place_buy_order(symbol, amount, rate, order_type)
+                if result:
+                    self.trading_text.insert(tk.END, f"\n🟢 === BUY ORDER RESULT ===\n")
+                    self.trading_text.insert(tk.END, json.dumps(result, indent=2, ensure_ascii=False))
+                    self.trading_text.insert(tk.END, f"\n{'='*60}\n")
+                    self.trading_text.see(tk.END)
+                    
+                    if result.get('error') == 0:
+                        messagebox.showinfo("Success", "🎉 Buy order placed successfully!")
+                        self.buy_amount_var.set("")
+                        self.buy_rate_var.set("")
+                        self.total_trades += 1
+                        self.stats_labels["📊 Trades"].configure(text=str(self.total_trades))
+                
+                self.update_status("Ready")
+            
+            threading.Thread(target=place, daemon=True).start()
+            
+        except ValueError:
+            messagebox.showerror("Error", "❌ Please enter valid numeric values")
     
-    # สร้างหน้าต่างหลัก
+    def place_sell_order(self):
+        """Enhanced sell order placement with validation"""
+        try:
+            if not self.api_client:
+                messagebox.showerror("Error", "Please configure API first!")
+                return
+                
+            symbol = self.sell_symbol_var.get()
+            amount = float(self.sell_amount_var.get()) if self.sell_amount_var.get() else 0
+            rate = float(self.sell_rate_var.get()) if self.sell_rate_var.get() else 0
+            order_type = self.sell_type_var.get()
+            
+            if amount <= 0:
+                messagebox.showerror("Error", "❌ Amount must be greater than 0")
+                return
+            
+            # Confirmation dialog
+            if not messagebox.askyesno("Confirm Order", 
+                                     f"🔴 Place SELL order?\n\n"
+                                     f"Symbol: {symbol.upper()}\n"
+                                     f"Amount: {amount} {symbol.split('_')[0].upper()}\n"
+                                     f"Rate: {rate:,.2f}\n"
+                                     f"Type: {order_type.upper()}"):
+                return
+            
+            self.update_status("Placing sell order...")
+            
+            def place():
+                result = self.api_client.place_sell_order(symbol, amount, rate, order_type)
+                if result:
+                    self.trading_text.insert(tk.END, f"\n🔴 === SELL ORDER RESULT ===\n")
+                    self.trading_text.insert(tk.END, json.dumps(result, indent=2, ensure_ascii=False))
+                    self.trading_text.insert(tk.END, f"\n{'='*60}\n")
+                    self.trading_text.see(tk.END)
+                    
+                    if result.get('error') == 0:
+                        messagebox.showinfo("Success", "🎉 Sell order placed successfully!")
+                        self.sell_amount_var.set("")
+                        self.sell_rate_var.set("")
+                        self.total_trades += 1
+                        self.stats_labels["📊 Trades"].configure(text=str(self.total_trades))
+                
+                self.update_status("Ready")
+            
+            threading.Thread(target=place, daemon=True).start()
+            
+        except ValueError:
+            messagebox.showerror("Error", "❌ Please enter valid numeric values")
+    
+    # Enhanced Market Data Functions
+    def get_ticker(self):
+        """Get ticker with enhanced formatting"""
+        if not self.api_client:
+            messagebox.showwarning("Warning", "Please configure API first!")
+            return
+            
+        self.update_status("Getting ticker data...")
+        
+        def fetch():
+            symbol = self.market_symbol_var.get()
+            result = self.api_client.get_ticker(symbol)
+            if result and len(result) > 0:
+                self.market_text.delete(1.0, tk.END)
+                self.market_text.insert(tk.END, f"📊 === TICKER DATA: {symbol.upper()} ===\n\n")
+                
+                ticker = result[0]
+                formatted_data = f"""
+🏷️  Symbol: {ticker.get('symbol', 'N/A')}
+💰 Last Price: {float(ticker.get('last', 0)):,.2f} THB
+📈 24h High: {float(ticker.get('high_24_hr', 0)):,.2f} THB
+📉 24h Low: {float(ticker.get('low_24_hr', 0)):,.2f} THB
+🔄 24h Change: {float(ticker.get('percent_change', 0)):+.2f}%
+📊 Volume (Base): {float(ticker.get('base_volume', 0)):,.8f}
+💵 Volume (Quote): {float(ticker.get('quote_volume', 0)):,.2f} THB
+🟢 Highest Bid: {float(ticker.get('highest_bid', 0)):,.2f} THB
+🔴 Lowest Ask: {float(ticker.get('lowest_ask', 0)):,.2f} THB
+"""
+                self.market_text.insert(tk.END, formatted_data)
+            self.update_status("Ready")
+        
+        threading.Thread(target=fetch, daemon=True).start()
+    
+    def get_orderbook(self):
+        """Get orderbook with enhanced formatting"""
+        if not self.api_client:
+            messagebox.showwarning("Warning", "Please configure API first!")
+            return
+            
+        self.update_status("Getting orderbook...")
+        
+        def fetch():
+            symbol = self.market_symbol_var.get()
+            result = self.api_client.get_depth(symbol, limit=10)
+            if result and 'result' in result:
+                self.market_text.delete(1.0, tk.END)
+                self.market_text.insert(tk.END, f"📋 === ORDERBOOK: {symbol.upper()} ===\n\n")
+                
+                asks = result['result'].get('asks', [])
+                bids = result['result'].get('bids', [])
+                
+                self.market_text.insert(tk.END, "🔴 === SELL ORDERS (ASKS) ===\n")
+                self.market_text.insert(tk.END, f"{'Price':>15} {'Amount':>15}\n")
+                self.market_text.insert(tk.END, "-" * 35 + "\n")
+                
+                for ask in asks[:10]:
+                    price, amount = ask[0], ask[1]
+                    self.market_text.insert(tk.END, f"{price:>15,.2f} {amount:>15,.8f}\n")
+                
+                self.market_text.insert(tk.END, "\n🟢 === BUY ORDERS (BIDS) ===\n")
+                self.market_text.insert(tk.END, f"{'Price':>15} {'Amount':>15}\n")
+                self.market_text.insert(tk.END, "-" * 35 + "\n")
+                
+                for bid in bids[:10]:
+                    price, amount = bid[0], bid[1]
+                    self.market_text.insert(tk.END, f"{price:>15,.2f} {amount:>15,.8f}\n")
+                        
+            self.update_status("Ready")
+        
+        threading.Thread(target=fetch, daemon=True).start()
+    
+    # Portfolio Functions
+    def refresh_portfolio(self):
+        """Refresh portfolio with comprehensive data"""
+        if not self.api_client:
+            messagebox.showwarning("Warning", "Please configure API first!")
+            return
+            
+        self.update_status("Refreshing portfolio...")
+        
+        def refresh():
+            wallet = self.api_client.get_wallet()
+            if wallet and wallet.get('error') == 0:
+                balance_data = wallet.get('result', {})
+                
+                # Update balance cards
+                for currency in ["THB", "BTC", "ETH"]:
+                    balance = balance_data.get(currency, 0)
+                    if currency == "THB":
+                        self.balance_cards[currency].configure(text=f"{balance:,.2f}")
+                    else:
+                        self.balance_cards[currency].configure(text=f"{balance:.8f}")
+                
+                # Calculate total value
+                total_value = balance_data.get('THB', 0)
+                self.balance_cards["Total Value"].configure(text=f"{total_value:,.2f} THB")
+                
+                self.log_message("✅ Portfolio refreshed successfully")
+            self.update_status("Ready")
+        
+        threading.Thread(target=refresh, daemon=True).start()
+    
+    def get_balances(self):
+        """Get detailed balances"""
+        if not self.api_client:
+            messagebox.showwarning("Warning", "Please configure API first!")
+            return
+            
+        self.update_status("Getting full balances...")
+        
+        def fetch():
+            result = self.api_client.get_balances()
+            if result:
+                self.portfolio_text.delete(1.0, tk.END)
+                self.portfolio_text.insert(tk.END, "💰 === FULL ACCOUNT BALANCES ===\n\n")
+                
+                if result.get('error') == 0:
+                    balances = result.get('result', {})
+                    self.portfolio_text.insert(tk.END, f"{'Currency':>12} {'Available':>18} {'Reserved':>18} {'Total':>18}\n")
+                    self.portfolio_text.insert(tk.END, "-" * 70 + "\n")
+                    
+                    total_value_thb = 0
+                    for currency, data in balances.items():
+                        available = float(data.get('available', 0))
+                        reserved = float(data.get('reserved', 0))
+                        total = available + reserved
+                        
+                        if currency == 'THB':
+                            total_value_thb += total
+                        
+                        if total > 0:  # Only show non-zero balances
+                            self.portfolio_text.insert(tk.END, 
+                                f"{currency:>12} {available:>18,.8f} {reserved:>18,.8f} {total:>18,.8f}\n")
+                    
+                    self.portfolio_text.insert(tk.END, f"\n💵 Total Portfolio Value: {total_value_thb:,.2f} THB\n")
+                else:
+                    self.portfolio_text.insert(tk.END, f"❌ Error: {result}")
+                    
+            self.update_status("Ready")
+        
+        threading.Thread(target=fetch, daemon=True).start()
+    
+    # Order Management Functions
+    def get_open_orders(self):
+        """Get open orders with enhanced formatting"""
+        if not self.api_client:
+            messagebox.showwarning("Warning", "Please configure API first!")
+            return
+            
+        self.update_status("Getting open orders...")
+        
+        def fetch():
+            symbol = self.order_symbol_var.get()
+            result = self.api_client.get_open_orders(symbol)
+            if result:
+                self.order_text.delete(1.0, tk.END)
+                self.order_text.insert(tk.END, f"📋 === OPEN ORDERS: {symbol.upper()} ===\n\n")
+                
+                if result.get('error') == 0:
+                    orders = result.get('result', [])
+                    
+                    if orders:
+                        self.order_text.insert(tk.END, f"{'ID':>12} {'Side':>6} {'Type':>8} {'Amount':>15} {'Rate':>15} {'Status':>10}\n")
+                        self.order_text.insert(tk.END, "-" * 75 + "\n")
+                        
+                        for order in orders:
+                            order_id = order.get('id', 'N/A')
+                            side = order.get('side', 'N/A')
+                            order_type = order.get('type', 'N/A')
+                            amount = float(order.get('amount', 0))
+                            rate = float(order.get('rate', 0))
+                            
+                            side_icon = "🟢" if side == "buy" else "🔴"
+                            
+                            self.order_text.insert(tk.END, 
+                                f"{order_id:>12} {side_icon}{side:>5} {order_type:>8} {amount:>15,.8f} {rate:>15,.2f} {'Active':>10}\n")
+                    else:
+                        self.order_text.insert(tk.END, "✅ No open orders found\n")
+                else:
+                    self.order_text.insert(tk.END, f"❌ Error: {result}")
+                    
+            self.update_status("Ready")
+        
+        threading.Thread(target=fetch, daemon=True).start()
+
+
+def main():
+    """Main application entry point"""
     root = tk.Tk()
     
-    # ตั้งค่าหน้าต่าง
-    root.configure(bg='#2b2b2b')
+    # Set application properties
+    root.configure(bg='#1e1e1e')
     
-    # สร้าง Application
-    app = BitkubTradingBot(root)
+    # Try to set window icon
+    try:
+        # You can add an icon file here
+        # root.iconbitmap('icon.ico')
+        pass
+    except:
+        pass
     
-    # จัดตำแหน่งหน้าต่างตรงกลางจอ
+    # Initialize the application
+    app = BitkubAIGUI(root)
+    
+    # Center window on screen
     root.update_idletasks()
     screen_width = root.winfo_screenwidth()
     screen_height = root.winfo_screenheight()
@@ -1417,31 +1249,24 @@ def main():
     y = (screen_height // 2) - (900 // 2)
     root.geometry(f"1400x900+{x}+{y}")
     
-    # ตั้งค่าขนาดขั้นต่ำ
-    root.minsize(1200, 700)
+    # Make window resizable
+    root.minsize(1200, 800)
     
-    # ข้อความต้อนรับ
-    app.log_message("🚀 ยินดีต้อนรับสู่ Bitkub AI Trading Bot Professional Edition!")
-    app.log_message("💡 กรุณาตั้งค่า API ในแท็บ 'ตั้งค่า API' ก่อนใช้งาน")
-    app.log_message("🤖 ฟีเจอร์ AI Trading ขั้นสูงพร้อมใช้งาน")
-    app.log_message("⚠️ การเทรดมีความเสี่ยง กรุณาใช้งานด้วยความระมัดระวัง")
+    # Add welcome message
+    app.log_message("🚀 Welcome to Bitkub AI Trading Bot!")
+    app.log_message("💡 Please configure your API credentials in the API Settings tab")
+    app.log_message("📈 Ready for trading!")
+    app.log_message("⚠️ Trading involves risk - please use with caution")
     
     if not MATPLOTLIB_AVAILABLE:
-        app.log_message("📊 กราฟไม่พร้อมใช้งาน - ติดตั้ง matplotlib สำหรับกราฟ", "WARNING")
+        app.log_message("📊 Chart features disabled - install matplotlib for charts")
     
-    # เริ่มต้นโปรแกรม
+    # Start the GUI
     try:
-        print("✅ GUI พร้อมใช้งาน")
         root.mainloop()
     except KeyboardInterrupt:
-        app.log_message("👋 กำลังปิดโปรแกรม...")
-        if app.ai_enabled:
-            app.stop_trading = True
+        app.log_message("👋 Application shutting down...")
         root.quit()
-    except Exception as e:
-        print(f"❌ ข้อผิดพลาด: {e}")
-        messagebox.showerror("ข้อผิดพลาด", f"เกิดข้อผิดพลาด: {e}")
-
 
 if __name__ == "__main__":
     main()

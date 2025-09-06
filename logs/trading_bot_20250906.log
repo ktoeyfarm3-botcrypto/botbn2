@@ -1,0 +1,124 @@
+2025-09-06 14:14:36,062 - BitkubBot - INFO - SUCCESS: เริ่มการติดตามราคาแล้ว
+2025-09-06 14:14:36,106 - BitkubBot - INFO - INFO: 🚀 ยินดีต้อนรับสู่ Bitkub AI Trading Bot Professional Edition!
+2025-09-06 14:14:36,139 - BitkubBot - INFO - INFO: 💡 กรุณาตั้งค่า API ในแท็บ 'ตั้งค่า API' ก่อนใช้งาน
+2025-09-06 14:14:36,157 - BitkubBot - INFO - INFO: 🤖 ฟีเจอร์ AI Trading ขั้นสูงพร้อมใช้งาน
+2025-09-06 14:14:36,165 - BitkubBot - INFO - INFO: ⚠️ การเทรดมีความเสี่ยง กรุณาใช้งานด้วยความระมัดระวัง
+2025-09-06 14:15:24,109 - BitkubBot - INFO - SUCCESS: บันทึกการตั้งค่า API สำเร็จ
+2025-09-06 14:15:24,171 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 14:15:24,568 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 14:15:24,827 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 14:15:24,841 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 14:15:35,792 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 14:15:36,260 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 14:15:36,512 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 14:15:36,515 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 14:15:56,608 - BitkubBot - INFO - SUCCESS: AI Trading เริ่มทำงานแล้ว
+2025-09-06 14:16:04,589 - BitkubBot - INFO - SUCCESS: AI Trading หยุดทำงานแล้ว
+2025-09-06 14:18:25,267 - BitkubBot - INFO - SUCCESS: บันทึกการตั้งค่า API สำเร็จ
+2025-09-06 14:18:25,269 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 14:18:25,684 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 14:18:26,098 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 14:18:26,106 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 14:18:36,489 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 14:18:36,974 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 14:18:37,321 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 14:18:37,325 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 14:21:24,358 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 14:21:24,598 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 14:21:24,854 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 14:21:24,856 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 14:21:26,276 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 14:21:26,521 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 14:21:26,848 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 14:21:26,851 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 14:21:29,686 - BitkubBot - INFO - SUCCESS: บันทึกการตั้งค่า API สำเร็จ
+2025-09-06 14:21:29,695 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 14:21:30,169 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 14:21:30,446 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 14:21:30,458 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 14:33:48,163 - BitkubBot - INFO - SUCCESS: เริ่มการติดตามราคาแล้ว
+2025-09-06 14:33:48,167 - BitkubBot - INFO - INFO: พบการตั้งค่า API ที่บันทึกไว้
+2025-09-06 14:33:48,213 - BitkubBot - INFO - INFO: 🚀 ยินดีต้อนรับสู่ Bitkub AI Trading Bot Professional Edition!
+2025-09-06 14:33:48,247 - BitkubBot - INFO - INFO: 💡 กรุณาตั้งค่า API ในแท็บ 'ตั้งค่า API' ก่อนใช้งาน
+2025-09-06 14:33:48,265 - BitkubBot - INFO - INFO: 🤖 ฟีเจอร์ AI Trading ขั้นสูงพร้อมใช้งาน
+2025-09-06 14:33:48,271 - BitkubBot - INFO - INFO: ⚠️ การเทรดมีความเสี่ยง กรุณาใช้งานด้วยความระมัดระวัง
+2025-09-06 14:34:31,568 - BitkubBot - INFO - SUCCESS: บันทึกการตั้งค่า API สำเร็จ
+2025-09-06 14:34:31,629 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 14:34:31,895 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 14:34:32,164 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 14:34:32,172 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 14:34:34,751 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 14:34:35,144 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 14:34:35,415 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 14:34:35,416 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 14:34:36,717 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 14:34:37,009 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 14:34:37,285 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 14:34:37,286 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 14:34:37,288 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 14:34:37,660 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 14:34:37,958 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 14:34:37,960 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 15:13:42,066 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 15:13:42,405 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 15:13:42,734 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 15:13:42,735 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 15:15:37,589 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 15:15:37,880 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 15:15:38,207 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 15:15:38,212 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 15:15:40,371 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 15:15:40,690 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 15:15:44,322 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 15:15:44,327 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 15:15:48,554 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 15:15:48,825 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 15:15:49,150 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 15:15:49,157 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 15:15:53,243 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 15:15:53,555 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 15:15:53,884 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 15:15:53,888 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 15:15:56,924 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 15:15:57,241 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 15:15:57,607 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 15:15:57,611 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 15:15:58,649 - BitkubBot - INFO - SUCCESS: บันทึกการตั้งค่า API สำเร็จ
+2025-09-06 15:15:58,653 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 15:15:59,035 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 15:15:59,470 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 15:15:59,478 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 15:22:39,009 - BitkubBot - INFO - SUCCESS: เริ่มการติดตามราคาแล้ว
+2025-09-06 15:22:39,013 - BitkubBot - INFO - INFO: พบการตั้งค่า API ที่บันทึกไว้
+2025-09-06 15:22:39,058 - BitkubBot - INFO - INFO: 🚀 ยินดีต้อนรับสู่ Bitkub AI Trading Bot Professional Edition!
+2025-09-06 15:22:39,091 - BitkubBot - INFO - INFO: 💡 กรุณาตั้งค่า API ในแท็บ 'ตั้งค่า API' ก่อนใช้งาน
+2025-09-06 15:22:39,107 - BitkubBot - INFO - INFO: 🤖 ฟีเจอร์ AI Trading ขั้นสูงพร้อมใช้งาน
+2025-09-06 15:22:39,113 - BitkubBot - INFO - INFO: ⚠️ การเทรดมีความเสี่ยง กรุณาใช้งานด้วยความระมัดระวัง
+2025-09-06 15:23:26,089 - BitkubBot - INFO - SUCCESS: บันทึกการตั้งค่า API สำเร็จ
+2025-09-06 15:23:26,155 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 15:23:26,468 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 15:23:26,774 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 15:23:26,790 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 15:23:29,314 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 15:23:29,595 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 15:23:29,901 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 15:23:29,904 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 15:24:24,854 - BitkubBot - INFO - SUCCESS: เริ่มการติดตามราคาแล้ว
+2025-09-06 15:24:24,858 - BitkubBot - INFO - INFO: พบการตั้งค่า API ที่บันทึกไว้
+2025-09-06 15:24:24,900 - BitkubBot - INFO - INFO: 🚀 ยินดีต้อนรับสู่ Bitkub AI Trading Bot Professional Edition!
+2025-09-06 15:24:24,934 - BitkubBot - INFO - INFO: 💡 กรุณาตั้งค่า API ในแท็บ 'ตั้งค่า API' ก่อนใช้งาน
+2025-09-06 15:24:24,951 - BitkubBot - INFO - INFO: 🤖 ฟีเจอร์ AI Trading ขั้นสูงพร้อมใช้งาน
+2025-09-06 15:24:24,957 - BitkubBot - INFO - INFO: ⚠️ การเทรดมีความเสี่ยง กรุณาใช้งานด้วยความระมัดระวัง
+2025-09-06 15:24:52,817 - BitkubBot - INFO - SUCCESS: บันทึกการตั้งค่า API สำเร็จ
+2025-09-06 15:24:52,882 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 15:24:53,172 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 15:24:56,435 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 15:24:56,445 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 15:25:00,548 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 15:25:00,819 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 15:25:01,116 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 15:25:01,117 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
+2025-09-06 18:40:29,831 - BitkubBot - INFO - API: 🔍 เริ่มทดสอบการเชื่อมต่อ API...
+2025-09-06 18:40:30,123 - BitkubBot - INFO - SUCCESS: ✅ Public API ทำงานปกติ
+2025-09-06 18:40:30,456 - __main__ - ERROR - Private API Error: 401 Client Error: Unauthorized for url: https://api.bitkub.com/api/v3/market/wallet
+2025-09-06 18:40:30,460 - BitkubBot - INFO - ERROR: ❌ API Error Code: ไม่มีการตอบกลับ
